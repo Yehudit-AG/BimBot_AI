@@ -1408,7 +1408,7 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
               <div>Layer 1: {hoveredPairData.layer1}</div>
               <div>Layer 2: {hoveredPairData.layer2}</div>
               <div>Distance: {hoveredPairData.perpendicular_distance.toFixed(2)} mm</div>
-              <div>Overlap: {hoveredPairData.overlap_percentage.toFixed(1)}%</div>
+              <div>אחוזי חפיפה (Overlap): {hoveredPairData.overlap_percentage.toFixed(1)}%</div>
               <div>Angle Diff: {hoveredPairData.angle_difference.toFixed(2)}°</div>
               <div>Avg Length: {hoveredPairData.average_length.toFixed(2)} mm</div>
             </div>

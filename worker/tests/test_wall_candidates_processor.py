@@ -120,12 +120,12 @@ class TestWallCandidatesProcessor(unittest.TestCase):
     
     def test_calculate_overlap_percentage_vertical_lines(self):
         """Test overlap calculation for vertical lines."""
-        line1 = self.create_line_entity(0, 0, 0, 100)  # Y: 0-100
-        line2 = self.create_line_entity(50, 25, 50, 75)  # Y: 25-75, overlap 50
+        line1 = self.create_line_entity(0, 0, 0, 100)  # Y: 0-100, length 100
+        line2 = self.create_line_entity(50, 25, 50, 75)  # Y: 25-75, length 50, overlap 50
         
         overlap = self.processor._calculate_overlap_percentage(line1, line2)
-        # Shorter line is 50, overlap is 50, so 100%
-        self.assertAlmostEqual(overlap, 100.0, places=1)
+        # Longer line is 100, overlap is 50, so 50%
+        self.assertAlmostEqual(overlap, 50.0, places=1)
     
     def test_check_distance_constraint_within_range(self):
         """Test distance constraint check for valid distances."""
@@ -149,16 +149,16 @@ class TestWallCandidatesProcessor(unittest.TestCase):
         self.assertFalse(self.processor._check_distance_constraint(line1, line2))
     
     def test_check_overlap_requirement_sufficient(self):
-        """Test overlap requirement check for sufficient overlap."""
-        line1 = self.create_line_entity(0, 0, 100, 0)
-        line2 = self.create_line_entity(0, 50, 80, 50)  # 80% overlap
+        """Test overlap requirement check for sufficient overlap (≥90% of longer line)."""
+        line1 = self.create_line_entity(0, 0, 100, 0)   # length 100
+        line2 = self.create_line_entity(0, 50, 90, 50)  # length 90, overlap 90 → 90/100=90%
         
         self.assertTrue(self.processor._check_overlap_requirement(line1, line2))
     
     def test_check_overlap_requirement_insufficient(self):
         """Test overlap requirement check for insufficient overlap."""
         line1 = self.create_line_entity(0, 0, 100, 0)
-        line2 = self.create_line_entity(60, 50, 100, 50)  # 40% overlap (< 60% min)
+        line2 = self.create_line_entity(60, 50, 100, 50)  # 40% overlap (< 90% min)
         
         self.assertFalse(self.processor._check_overlap_requirement(line1, line2))
     

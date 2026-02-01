@@ -18,7 +18,8 @@ from .database.connection import get_db
 from .models.database_models import Drawing, Layer, Job, JobStep, JobLog, Artifact, LayerSelection
 from .models.api_models import (
     DrawingResponse, LayerResponse, JobResponse, JobStepResponse,
-    LayerSelectionRequest, JobCreateRequest, LogResponse
+    LayerSelectionRequest, JobCreateRequest, LogResponse,
+    WallCandidatePairsResponse,
 )
 from .adapters.drawing_adapter import DrawingAdapter
 from .services.job_service import JobService
@@ -491,12 +492,12 @@ async def get_job_canvas_data(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error reading canvas data: {str(e)}")
 
-@app.get("/jobs/{job_id}/wall-candidate-pairs")
+@app.get("/jobs/{job_id}/wall-candidate-pairs", response_model=WallCandidatePairsResponse)
 async def get_job_wall_candidate_pairs(
     job_id: uuid.UUID,
     db: Session = Depends(get_db)
 ):
-    """Get wall candidate pairs data for a job."""
+    """Get wall candidate pairs for a job; each pair includes overlap_percentage (אחוזי חפיפה)."""
     # #region agent log
     import json
     import time

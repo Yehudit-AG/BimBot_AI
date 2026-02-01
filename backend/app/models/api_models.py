@@ -105,3 +105,32 @@ class ErrorResponse(BaseModel):
     detail: str
     error_code: Optional[str] = None
     timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
+# ---------------------------------------------------------------------------
+# Wall candidate pairs (for GET /jobs/{job_id}/wall-candidate-pairs)
+# ---------------------------------------------------------------------------
+
+class WallCandidatePairGeometricProperties(BaseModel):
+    """Geometric properties of a wall candidate pair; overlap is % of longer line covered."""
+    perpendicular_distance: float = Field(..., description="Distance between the two lines (mm)")
+    overlap_percentage: float = Field(..., description="Overlap %: fraction of the longer line covered by overlap (0-100)")
+    angle_difference: float = Field(..., description="Angle difference between lines (degrees)")
+    average_length: float = Field(..., description="Average length of the two lines (mm)")
+    bounding_rectangle: Optional[Dict[str, Any]] = None
+
+
+class WallCandidatePairItem(BaseModel):
+    """Single wall candidate pair as returned by the pipeline."""
+    pair_id: str
+    line1: Dict[str, Any]
+    line2: Dict[str, Any]
+    geometric_properties: WallCandidatePairGeometricProperties
+
+
+class WallCandidatePairsResponse(BaseModel):
+    """Response for wall candidate pairs; each pair includes overlap_percentage (אחוזי חפיפה)."""
+    pairs: List[WallCandidatePairItem] = Field(..., description="List of wall candidate pairs with geometric_properties.overlap_percentage")
+    detection_stats: Optional[Dict[str, Any]] = None
+    algorithm_config: Optional[Dict[str, Any]] = None
+    totals: Optional[Dict[str, Any]] = None

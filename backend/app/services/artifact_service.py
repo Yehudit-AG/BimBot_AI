@@ -391,8 +391,21 @@ class ArtifactService:
             )
             return {"error": "Failed to generate summary"}
     
+    def _ensure_pairs_have_overlap_percentage(self, pairs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Ensure each pair has geometric_properties.overlap_percentage (אחוזי חפיפה) for API/UI."""
+        result = []
+        for p in pairs:
+            pair = dict(p)
+            geo = pair.get("geometric_properties") or {}
+            geo = dict(geo)
+            if "overlap_percentage" not in geo:
+                geo["overlap_percentage"] = 0.0
+            pair["geometric_properties"] = geo
+            result.append(pair)
+        return result
+
     def get_wall_candidate_pairs(self, db: Session, job_id: uuid.UUID) -> Optional[Dict[str, Any]]:
-        """Get wall candidate pairs artifact for a job."""
+        """Get wall candidate pairs artifact for a job; each pair includes overlap_percentage (אחוזי חפיפה)."""
         try:
             # #region agent log
             import json
@@ -419,16 +432,20 @@ class ArtifactService:
             
             content = self.get_artifact_content(artifact)
             
-            # If the content has wall_candidate_pairs directly, return it in the expected format
-            if isinstance(content, dict) and 'wall_candidate_pairs' in content:
-                return {
-                    'pairs': content['wall_candidate_pairs'],
-                    'detection_stats': content.get('detection_stats', {}),
-                    'algorithm_config': content.get('algorithm_config', {}),
-                    'totals': content.get('totals', {})
-                }
+            # Normalize: support both 'pairs' and 'wall_candidate_pairs' keys
+            raw_pairs = None
+            if isinstance(content, dict):
+                raw_pairs = content.get("wall_candidate_pairs") or content.get("pairs")
+            if raw_pairs is None:
+                return content
             
-            return content
+            pairs = self._ensure_pairs_have_overlap_percentage(raw_pairs)
+            return {
+                "pairs": pairs,
+                "detection_stats": content.get("detection_stats", {}),
+                "algorithm_config": content.get("algorithm_config", {}),
+                "totals": content.get("totals", {}),
+            }
             
         except Exception as e:
             logging_service.logger.error(

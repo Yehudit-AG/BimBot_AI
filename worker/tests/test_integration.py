@@ -200,10 +200,10 @@ class TestWallCandidatesIntegration(unittest.TestCase):
     
     def test_edge_case_minimum_overlap(self):
         """Test edge case with minimum overlap requirement."""
-        # Create lines with exactly 60% overlap
+        # Create lines with exactly 90% overlap (1000mm line, 900mm overlap)
         line_entities = [
-            self.create_line_entity(0, 0, 1000, 0),      # 1000mm line
-            self.create_line_entity(400, 100, 1000, 100), # 600mm line, 600mm overlap = 60%
+            self.create_line_entity(0, 0, 1000, 0),       # 1000mm line
+            self.create_line_entity(100, 100, 1100, 100),  # 1000mm line, 900mm overlap = 90%
         ]
         
         pipeline_data = self.create_pipeline_data(line_entities)
@@ -215,7 +215,7 @@ class TestWallCandidatesIntegration(unittest.TestCase):
         self.assertEqual(len(result['wall_candidate_pairs']), 1)
         self.assertAlmostEqual(
             result['wall_candidate_pairs'][0]['geometric_properties']['overlap_percentage'],
-            60.0,
+            90.0,
             places=1
         )
 

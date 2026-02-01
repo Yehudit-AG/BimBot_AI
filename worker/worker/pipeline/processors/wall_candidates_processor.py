@@ -16,7 +16,7 @@ class WallCandidatesProcessor(BaseProcessor):
     ANGULAR_TOLERANCE = 5.0  # degrees
     MIN_DISTANCE = 20.0  # mm (2cm)
     MAX_DISTANCE = 450.0  # mm (45cm)
-    MIN_OVERLAP_PERCENTAGE = 60.0  # percent
+    MIN_OVERLAP_PERCENTAGE = 90.0  # percent
     DETECTION_MODE = "pair_based"  # "mock" or "pair_based"
     
     def process(self, pipeline_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -426,15 +426,15 @@ class WallCandidatesProcessor(BaseProcessor):
         overlap_end = min(line1_max, line2_max)
         overlap_length = max(0, overlap_end - overlap_start)
         
-        # Calculate lengths
+        # Calculate lengths (overlap % = fraction of the longer line covered by overlap)
         line1_length = line1_max - line1_min
         line2_length = line2_max - line2_min
-        shorter_length = min(line1_length, line2_length)
+        longer_length = max(line1_length, line2_length)
         
-        if shorter_length == 0:
+        if longer_length == 0:
             return 0.0
         
-        return (overlap_length / shorter_length) * 100.0
+        return (overlap_length / longer_length) * 100.0
     
     def _create_candidate_pair(self, line1: Dict[str, Any], line2: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Create a wall candidate pair with all geometric data."""

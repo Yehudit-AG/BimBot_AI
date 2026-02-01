@@ -1,0 +1,120 @@
+version: '3.8'
+
+services:
+  bimbot_postgres:
+    image: postgres:15
+    container_name: bimbot_postgres
+    environment:
+      POSTGRES_DB: bimbot_ai_wall
+      POSTGRES_USER: bimbot_user
+      POSTGRES_PASSWORD: bimbot_password
+    ports:
+      - "0:5432"  # Dynamic port allocation
+    volumes:
+      - bimbot_postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bimbot_user -d bimbot_ai_wall"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - bimbot_network
+
+  bimbot_redis:
+    image: redis:7-alpine
+    container_name: bimbot_redis
+    ports:
+      - "0:6379"  # Dynamic port allocation
+    volumes:
+      - bimbot_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - bimbot_network
+
+  bimbot_backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: bimbot_backend
+    environment:
+      - DATABASE_URL=postgresql://bimbot_user:bimbot_password@bimbot_postgres:5432/bimbot_ai_wall
+      - REDIS_URL=redis://bimbot_redis:6379/0
+      - ENVIRONMENT=development
+      - LOG_LEVEL=INFO
+    ports:
+      - "8000:8000"  # Fixed port allocation
+    volumes:
+      - ./uploads:/app/uploads
+      - ./artifacts:/app/artifacts
+    depends_on:
+      bimbot_postgres:
+        condition: service_healthy
+      bimbot_redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - bimbot_network
+
+  bimbot_worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    container_name: bimbot_worker
+    environment:
+      - DATABASE_URL=postgresql://bimbot_user:bimbot_password@bimbot_postgres:5432/bimbot_ai_wall
+      - REDIS_URL=redis://bimbot_redis:6379/0
+      - ENVIRONMENT=development
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./uploads:/app/uploads
+      - ./artifacts:/app/artifacts
+    depends_on:
+      bimbot_postgres:
+        condition: service_healthy
+      bimbot_redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import redis; r=redis.Redis(host='bimbot_redis'); r.ping()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - bimbot_network
+
+  bimbot_frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: bimbot_frontend
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+    ports:
+      - "3001:3000"  # Use port 3001 to avoid conflict
+    depends_on:
+      bimbot_backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - bimbot_network
+
+volumes:
+  bimbot_postgres_data:
+  bimbot_redis_data:
+
+networks:
+  bimbot_network:
+    driver: bridge
+    name: bimbot_network

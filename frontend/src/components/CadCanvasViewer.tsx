@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { getJobCanvasData, getJobWallCandidatePairs } from '../services/api';
+import { getJobCanvasData, getJobWallCandidatePairs, getJobWallCandidatePairsB } from '../services/api';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -399,6 +399,10 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
   const [pairsData, setPairsData] = useState<NormalizedPair[] | null>(null);
   const [pairsLoading, setPairsLoading] = useState(false);
   const [pairsError, setPairsError] = useState<string | null>(null);
+  const [showPairsB, setShowPairsB] = useState(false);
+  const [pairsDataB, setPairsDataB] = useState<NormalizedPair[] | null>(null);
+  const [pairsLoadingB, setPairsLoadingB] = useState(false);
+  const [pairsErrorB, setPairsErrorB] = useState<string | null>(null);
   const [hoveredPair, setHoveredPair] = useState<HoveredPair | null>(null);
   const [moveMode, setMoveMode] = useState(false);
 
@@ -482,6 +486,9 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
     setPairsError(null);
     setHoveredPair(null);
     setShowPairs(false);
+    setPairsDataB(null);
+    setPairsErrorB(null);
+    setShowPairsB(false);
   }, [jobId]);
 
   // ============================================================================
@@ -542,6 +549,29 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
       cancelled = true;
     };
   }, [jobId, showPairs, pairsData]); // Removed pairsLoading from dependencies to prevent stuck state
+
+  // Pairs B (Logic B) lazy fetch – same pattern as Pairs: no pairsLoadingB in deps to avoid stuck/loop
+  useEffect(() => {
+    if (!showPairsB || pairsDataB !== null || pairsLoadingB) return;
+    let cancelled = false;
+    const fetchPairsB = async () => {
+      try {
+        setPairsLoadingB(true);
+        setPairsErrorB(null);
+        const data = await getJobWallCandidatePairsB(jobId);
+        if (!cancelled) setPairsDataB(normalizePairsData(data));
+      } catch (err) {
+        if (!cancelled) {
+          setPairsErrorB(err instanceof Error ? err.message : 'Failed to load pairs B');
+          setPairsDataB([]);
+        }
+      } finally {
+        if (!cancelled) setPairsLoadingB(false);
+      }
+    };
+    fetchPairsB();
+    return () => { cancelled = true; };
+  }, [jobId, showPairsB, pairsDataB]);
 
   // ============================================================================
   // SPATIAL GRID BUILDING
@@ -823,7 +853,34 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
     } else {
       console.log('⏸️ Not rendering pairs:', { showPairs, hasData: pairsData !== null });
     }
-  }, [normalizedData, transform, hoveredLine, selectedLine, layerVisibility, showPairs, pairsData, hoveredPair]);
+
+    // Pairs B (Logic B) overlay – green
+    if (showPairsB && pairsDataB) {
+      ctx.save();
+      pairsDataB.forEach((pair, pairIdx) => {
+        const intersects = aabbIntersects(pair.rect, viewportBBox);
+        if (!intersects) return;
+        const rect = pair.rect;
+        const corners = [
+          { x: rect.minX, y: rect.minY },
+          { x: rect.maxX, y: rect.minY },
+          { x: rect.maxX, y: rect.maxY },
+          { x: rect.minX, y: rect.maxY },
+        ];
+        const screenCorners = corners.map((c) => worldToScreen(c.x, c.y, transform));
+        ctx.beginPath();
+        ctx.moveTo(screenCorners[0].x, screenCorners[0].y);
+        for (let i = 1; i < screenCorners.length; i++) ctx.lineTo(screenCorners[i].x, screenCorners[i].y);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(0, 180, 0, 0.25)';
+        ctx.fill();
+        ctx.strokeStyle = 'rgb(0, 140, 0)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      });
+      ctx.restore();
+    }
+  }, [normalizedData, transform, hoveredLine, selectedLine, layerVisibility, showPairs, pairsData, showPairsB, pairsDataB, hoveredPair]);
 
   useEffect(() => {
     if (animationFrameRef.current) {
@@ -1230,6 +1287,25 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
           {pairsLoading ? 'Loading...' : showPairs ? 'Hide Pairs' : 'Show Pairs'}
         </button>
 
+        <button
+          onClick={() => setShowPairsB(!showPairsB)}
+          disabled={pairsLoadingB}
+          style={{
+            padding: '8px 16px',
+            backgroundColor: showPairsB ? '#008C00' : '#fff',
+            color: showPairsB ? '#fff' : '#000',
+            border: '1px solid #ccc',
+            borderRadius: '4px',
+            cursor: pairsLoadingB ? 'wait' : 'pointer',
+            fontSize: '14px',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+            opacity: pairsLoadingB ? 0.6 : 1,
+          }}
+          title="Show/Hide Wall Candidate Pairs B (Logic B)"
+        >
+          {pairsLoadingB ? 'Loading...' : showPairsB ? 'Hide Pairs B' : 'Candidate Pairs B'}
+        </button>
+
         {pairsError && (
           <div
             style={{
@@ -1242,6 +1318,20 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
             }}
           >
             {pairsError}
+          </div>
+        )}
+        {pairsErrorB && (
+          <div
+            style={{
+              padding: '4px 8px',
+              fontSize: '11px',
+              color: 'red',
+              backgroundColor: '#fff',
+              border: '1px solid #ccc',
+              borderRadius: '4px',
+            }}
+          >
+            {pairsErrorB}
           </div>
         )}
 

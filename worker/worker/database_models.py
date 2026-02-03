@@ -21,7 +21,7 @@ class Drawing(Base):
     file_hash = Column(String(64), nullable=False, unique=True)
     upload_timestamp = Column(DateTime(timezone=True), server_default=func.now())
     status = Column(String(50), default='uploaded')
-    drawing_metadata = Column(JSONB)
+    drawing_metadata = Column(JSONB, name='metadata')
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -62,7 +62,7 @@ class Job(Base):
     completed_at = Column(DateTime(timezone=True))
     failed_at = Column(DateTime(timezone=True))
     error_message = Column(Text)
-    job_metadata = Column(JSONB)
+    job_metadata = Column(JSONB, name='metadata')
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -108,5 +108,5 @@ class Artifact(Base):
     file_path = Column(String(500))
     file_size = Column(BigInteger)
     content_type = Column(String(100))
-    artifact_metadata = Column(JSONB)
+    artifact_metadata = Column(JSONB, name='metadata')
     created_at = Column(DateTime(timezone=True), server_default=func.now())

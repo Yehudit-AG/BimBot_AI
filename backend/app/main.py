@@ -170,12 +170,15 @@ async def upload_drawing(
     except HTTPException:
         raise
     except Exception as e:
+        import traceback
         logger.error(
             "Drawing upload failed",
             request_id=request_id,
-            error=str(e)
+            error=str(e),
+            traceback=traceback.format_exc()
         )
-        raise HTTPException(status_code=500, detail="Internal server error")
+        detail = str(e)
+        raise HTTPException(status_code=500, detail=detail)
 
 @app.get("/drawings/{drawing_id}/layers", response_model=List[LayerResponse])
 async def get_drawing_layers(
@@ -521,6 +524,23 @@ async def get_job_wall_candidate_pairs(
     if not pairs_data:
         raise HTTPException(status_code=404, detail="Wall candidate pairs data not available for this job")
     
+    return pairs_data
+
+@app.get("/jobs/{job_id}/wall-candidate-pairs-b", response_model=WallCandidatePairsResponse)
+async def get_job_wall_candidate_pairs_b(
+    job_id: uuid.UUID,
+    db: Session = Depends(get_db)
+):
+    """Get wall candidate pairs B (Logic B: trimmed segments, overlap in mm) for a job."""
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    artifact_svc = ArtifactService()
+    pairs_data = artifact_svc.get_wall_candidate_pairs_b(db, job_id)
+    if not pairs_data:
+        raise HTTPException(status_code=404, detail="Wall candidate pairs B data not available for this job")
+
     return pairs_data
 
 if __name__ == "__main__":

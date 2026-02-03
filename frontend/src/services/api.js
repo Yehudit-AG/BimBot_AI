@@ -38,7 +38,8 @@ api.interceptors.response.use(
     } else if (error.response?.status === 409) {
       throw new Error(error.response.data?.detail || 'This file has already been uploaded');
     } else if (error.response?.status >= 500) {
-      throw new Error('Server error. Please try again later.');
+      const detail = error.response?.data?.detail;
+      throw new Error(typeof detail === 'string' ? detail : 'Server error. Please try again later.');
     }
     
     throw new Error(error.response?.data?.detail || error.message || 'An error occurred');
@@ -109,6 +110,11 @@ export const getJobCanvasData = async (jobId) => {
 
 export const getJobWallCandidatePairs = async (jobId) => {
   const response = await api.get(`/jobs/${jobId}/wall-candidate-pairs`);
+  return response.data;
+};
+
+export const getJobWallCandidatePairsB = async (jobId) => {
+  const response = await api.get(`/jobs/${jobId}/wall-candidate-pairs-b`);
   return response.data;
 };
 

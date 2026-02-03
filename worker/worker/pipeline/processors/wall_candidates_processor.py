@@ -1,5 +1,6 @@
 """
 WALL_CANDIDATES_PLACEHOLDER processor - Mock wall detection and pair-based detection.
+Uses same units as Logic B (see wall_candidate_constants).
 """
 
 import time
@@ -8,15 +9,23 @@ import math
 import uuid
 from typing import Dict, Any, List, Tuple, Optional
 from .base_processor import BaseProcessor
+from .wall_candidate_constants import (
+    ANGULAR_TOLERANCE_DEG,
+    MIN_DISTANCE,
+    MAX_DISTANCE,
+    MIN_OVERLAP_PERCENTAGE,
+    MOCK_MIN_WALL_LENGTH,
+    MOCK_PROXIMITY_THRESHOLD,
+    MOCK_AVERAGE_WALL_THICKNESS,
+)
 
 class WallCandidatesProcessor(BaseProcessor):
-    """Processor for wall candidate detection with mock and pair-based algorithms."""
+    """Processor for wall candidate detection with mock and pair-based algorithms (Logic A)."""
     
-    # Configuration constants
-    ANGULAR_TOLERANCE = 5.0  # degrees
-    MIN_DISTANCE = 20.0  # mm (2cm)
-    MAX_DISTANCE = 450.0  # mm (45cm)
-    MIN_OVERLAP_PERCENTAGE = 90.0  # percent
+    ANGULAR_TOLERANCE = ANGULAR_TOLERANCE_DEG
+    MIN_DISTANCE = MIN_DISTANCE
+    MAX_DISTANCE = MAX_DISTANCE
+    MIN_OVERLAP_PERCENTAGE = MIN_OVERLAP_PERCENTAGE
     DETECTION_MODE = "pair_based"  # "mock" or "pair_based"
     
     def process(self, pipeline_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -36,15 +45,42 @@ class WallCandidatesProcessor(BaseProcessor):
         parallel_results = pipeline_data.get('parallel_naive_results', {})
         entities_data = parallel_results.get('entities', {})
         parallel_ready_entities = entities_data.get('parallel_ready_entities', [])
-        
-        # Filter to only LINE entities
-        line_entities = [entity for entity in parallel_ready_entities if entity['entity_type'] == 'LINE']
-        
+
+        # Use LINEs plus polyline segments (same as Logic B) so we do not miss candidates from POLYLINE geometry
+        line_entities = self._build_line_like_entities(parallel_ready_entities)
+
         if mode == "pair_based":
             return self._process_pair_based_detection(line_entities, start_time)
         else:
             return self._process_mock_detection(line_entities, start_time)
-    
+
+    def _build_line_like_entities(
+        self, parallel_ready_entities: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Build line-like list: all LINEs plus each polyline segment as a virtual LINE (same as Logic B)."""
+        out: List[Dict[str, Any]] = []
+        for entity in parallel_ready_entities:
+            etype = entity.get("entity_type")
+            if etype == "LINE":
+                out.append(entity)
+            elif etype == "POLYLINE":
+                nd = entity.get("normalized_data", {})
+                vertices = nd.get("Vertices", [])
+                base_hash = entity.get("entity_hash") or ""
+                layer_name = entity.get("layer_name", "")
+                for i in range(len(vertices) - 1):
+                    seg = {
+                        "entity_type": "LINE",
+                        "entity_hash": f"{base_hash}_seg_{i}",
+                        "layer_name": layer_name,
+                        "normalized_data": {
+                            "Start": vertices[i],
+                            "End": vertices[i + 1],
+                        },
+                    }
+                    out.append(seg)
+        return out
+
     def _analyze_line_for_wall(self, line_entity: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze if a line could be a wall (mock implementation)."""
         normalized_data = line_entity.get('normalized_data', {})
@@ -56,10 +92,8 @@ class WallCandidatesProcessor(BaseProcessor):
         dy = end.get('Y', 0) - start.get('Y', 0)
         length = (dx**2 + dy**2)**0.5
         
-        # Mock criteria for wall detection
-        min_wall_length = 500.0  # Minimum 500mm
-        
-        if length < min_wall_length:
+        # Mock criteria for wall detection (same units as pair-based logic)
+        if length < MOCK_MIN_WALL_LENGTH:
             return None
         
         # Determine if line is horizontal or vertical (potential wall)
@@ -92,10 +126,8 @@ class WallCandidatesProcessor(BaseProcessor):
         if not wall_candidates:
             return []
         
-        # Simple grouping by proximity (mock algorithm)
+        # Simple grouping by proximity (mock algorithm, same units as constants)
         segments = []
-        proximity_threshold = 200.0  # 200mm
-        
         for candidate in wall_candidates:
             # For Phase 1, each candidate becomes its own segment
             segment = {
@@ -251,7 +283,7 @@ class WallCandidatesProcessor(BaseProcessor):
         # Mock wall properties analysis
         wall_analysis = {
             'total_wall_length': sum(segment['length'] for segment in wall_segments),
-            'average_wall_thickness': 150.0,  # Mock value in mm
+            'average_wall_thickness': MOCK_AVERAGE_WALL_THICKNESS,
             'wall_orientations': self._analyze_wall_orientations(wall_segments),
             'intersection_points': self._find_mock_intersections(wall_segments)
         }

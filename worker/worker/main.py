@@ -3,6 +3,7 @@ BimBot AI Wall Worker - RQ Worker Process
 Main worker entry point for processing jobs.
 """
 
+import logging
 import os
 import sys
 import redis
@@ -14,6 +15,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from worker.config import settings
 from worker.job_processor import process_job
+
+# Ensure INFO (and below) are printed to stderr so they appear in docker logs
+logging.basicConfig(
+    level=getattr(logging, (getattr(settings, "log_level", "INFO") or "INFO").upper()),
+    format="%(message)s",
+    stream=sys.stderr,
+)
 
 # Configure structured logging
 structlog.configure(

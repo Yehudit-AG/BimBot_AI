@@ -42,7 +42,8 @@ def process_job(job_id_str: str) -> Dict[str, Any]:
     )
     
     db = SessionLocal()
-    
+    job = None
+
     try:
         # Get job from database
         job = db.query(Job).filter(Job.id == job_id).first()
@@ -118,6 +119,10 @@ def process_job(job_id_str: str) -> Dict[str, Any]:
                     with open(r'c:\Users\yehudit\Desktop\BimBot_AI_WALL\.cursor\debug.log', 'a', encoding='utf-8') as f:
                         f.write(json.dumps({"sessionId":"debug-session","runId":"initial","hypothesisId":"A,D","location":"job_processor.py:105","message":"Artifact created","data":{"step_name":step_name,"artifact_type":f"{step_name.lower()}_results","artifact_id":str(artifact.id)},"timestamp":int(time.time()*1000)}) + '\n')
                     # #endregion
+
+        # Create dedicated wall_candidate_pairs and wall_candidate_pairs_b artifacts (single source of truth)
+        final_artifacts = artifact_service.store_final_results(db, job_id, results)
+        artifacts.extend(final_artifacts)
         
         # Update job status
         job.status = "completed"
@@ -129,49 +134,61 @@ def process_job(job_id_str: str) -> Dict[str, Any]:
         }
         db.commit()
         
-        # Log job completion
+        # Build a short summary for logs (do not log full results - too large)
+        def _results_summary(res: Dict[str, Any]) -> Dict[str, Any]:
+            out = {}
+            for step_name, step_result in (res or {}).items():
+                if not isinstance(step_result, dict):
+                    continue
+                n_pairs = len(step_result.get("wall_candidate_pairs") or [])
+                stats = step_result.get("detection_stats") or {}
+                out[step_name] = {"pairs": n_pairs, "unpaired": stats.get("unpaired_count"), "entities": stats.get("entities_analyzed")}
+            return out
+
+        summary = _results_summary(results)
         log_entry = JobLog(
             job_id=job.id,
             drawing_id=job.drawing_id,
             level="INFO",
             message="Job processing completed successfully",
-            context={"results": results}
+            context={"summary": summary, "artifacts": len(artifacts)}
         )
         db.add(log_entry)
         db.commit()
         
         logger.info(
-            "Job processing completed",
+            "Job completed",
             job_id=job_id_str,
-            results=results
+            summary=summary,
+            artifacts=len(artifacts)
         )
         
         return results
         
     except Exception as e:
-        # Update job status
-        job.status = "failed"
-        job.failed_at = datetime.utcnow()
-        job.error_message = str(e)
-        db.commit()
-        
-        # Log error
-        log_entry = JobLog(
-            job_id=job.id,
-            drawing_id=job.drawing_id,
-            level="ERROR",
-            message=f"Job processing failed: {str(e)}",
-            context={"error_type": type(e).__name__}
-        )
-        db.add(log_entry)
-        db.commit()
-        
+        # Update job status only if we successfully loaded the job
+        if job is not None:
+            job.status = "failed"
+            job.failed_at = datetime.utcnow()
+            job.error_message = str(e)
+            db.commit()
+
+            log_entry = JobLog(
+                job_id=job.id,
+                drawing_id=job.drawing_id,
+                level="ERROR",
+                message=f"Job processing failed: {str(e)}",
+                context={"error_type": type(e).__name__}
+            )
+            db.add(log_entry)
+            db.commit()
+
         logger.error(
             "Job processing failed",
             job_id=job_id_str,
             error=str(e)
         )
-        
+
         raise
         
     finally:

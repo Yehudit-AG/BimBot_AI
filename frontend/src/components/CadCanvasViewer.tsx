@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { getJobCanvasData, getJobWallCandidatePairs, getJobWallCandidatePairsB } from '../services/api';
+import { getJobCanvasData, getJobWallCandidatePairs, getJobLogicBPairs } from '../services/api';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -399,11 +399,16 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
   const [pairsData, setPairsData] = useState<NormalizedPair[] | null>(null);
   const [pairsLoading, setPairsLoading] = useState(false);
   const [pairsError, setPairsError] = useState<string | null>(null);
-  const [showPairsB, setShowPairsB] = useState(false);
-  const [pairsDataB, setPairsDataB] = useState<NormalizedPair[] | null>(null);
-  const [pairsLoadingB, setPairsLoadingB] = useState(false);
-  const [pairsErrorB, setPairsErrorB] = useState<string | null>(null);
   const [hoveredPair, setHoveredPair] = useState<HoveredPair | null>(null);
+  const [showLogicBPairs, setShowLogicBPairs] = useState(false);
+  const [logicBPairsData, setLogicBPairsData] = useState<Array<{
+    pair_id: string;
+    trimmedSegmentA: { p1: { X: number; Y: number }; p2: { X: number; Y: number } };
+    trimmedSegmentB: { p1: { X: number; Y: number }; p2: { X: number; Y: number } };
+    bounding_rectangle?: { minX: number; minY: number; maxX: number; maxY: number };
+  }> | null>(null);
+  const [logicBPairsLoading, setLogicBPairsLoading] = useState(false);
+  const [logicBPairsError, setLogicBPairsError] = useState<string | null>(null);
   const [moveMode, setMoveMode] = useState(false);
 
   const gridRef = useRef<SpatialGrid | null>(null);
@@ -486,9 +491,9 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
     setPairsError(null);
     setHoveredPair(null);
     setShowPairs(false);
-    setPairsDataB(null);
-    setPairsErrorB(null);
-    setShowPairsB(false);
+    setLogicBPairsData(null);
+    setLogicBPairsError(null);
+    setShowLogicBPairs(false);
   }, [jobId]);
 
   // ============================================================================
@@ -550,28 +555,31 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
     };
   }, [jobId, showPairs, pairsData]); // Removed pairsLoading from dependencies to prevent stuck state
 
-  // Pairs B (Logic B) lazy fetch – same pattern as Pairs: no pairsLoadingB in deps to avoid stuck/loop
+  // LOGIC B pairs: lazy load when overlay is toggled on
+  // Do NOT put logicBPairsLoading in deps: then setting it true would re-run effect, cleanup would
+  // set cancelled=true, and the completing request would skip updates → loading forever.
   useEffect(() => {
-    if (!showPairsB || pairsDataB !== null || pairsLoadingB) return;
+    if (!showLogicBPairs || logicBPairsData !== null || logicBPairsLoading) return;
     let cancelled = false;
-    const fetchPairsB = async () => {
-      try {
-        setPairsLoadingB(true);
-        setPairsErrorB(null);
-        const data = await getJobWallCandidatePairsB(jobId);
-        if (!cancelled) setPairsDataB(normalizePairsData(data));
-      } catch (err) {
+    setLogicBPairsLoading(true);
+    setLogicBPairsError(null);
+    getJobLogicBPairs(jobId)
+      .then((data) => {
         if (!cancelled) {
-          setPairsErrorB(err instanceof Error ? err.message : 'Failed to load pairs B');
-          setPairsDataB([]);
+          setLogicBPairsData(Array.isArray(data?.pairs) ? data.pairs : []);
         }
-      } finally {
-        if (!cancelled) setPairsLoadingB(false);
-      }
-    };
-    fetchPairsB();
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setLogicBPairsError(err instanceof Error ? err.message : 'Failed to load LOGIC B pairs');
+          setLogicBPairsData([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLogicBPairsLoading(false);
+      });
     return () => { cancelled = true; };
-  }, [jobId, showPairsB, pairsDataB]);
+  }, [jobId, showLogicBPairs, logicBPairsData]);
 
   // ============================================================================
   // SPATIAL GRID BUILDING
@@ -854,33 +862,35 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
       console.log('⏸️ Not rendering pairs:', { showPairs, hasData: pairsData !== null });
     }
 
-    // Pairs B (Logic B) overlay – green
-    if (showPairsB && pairsDataB) {
-      ctx.save();
-      pairsDataB.forEach((pair, pairIdx) => {
-        const intersects = aabbIntersects(pair.rect, viewportBBox);
-        if (!intersects) return;
-        const rect = pair.rect;
+    // LOGIC B overlay: closed green quad per pair (A_start, A_end, B_end, B_start)
+    if (showLogicBPairs && logicBPairsData && logicBPairsData.length > 0) {
+      logicBPairsData.forEach((pair) => {
+        const a = pair.trimmedSegmentA;
+        const b = pair.trimmedSegmentB;
+        const br = pair.bounding_rectangle;
+        if (!a?.p1 || !a?.p2 || !b?.p1 || !b?.p2) return;
+        if (br && !aabbIntersects(br, viewportBBox)) return;
         const corners = [
-          { x: rect.minX, y: rect.minY },
-          { x: rect.maxX, y: rect.minY },
-          { x: rect.maxX, y: rect.maxY },
-          { x: rect.minX, y: rect.maxY },
+          { x: a.p1.X, y: a.p1.Y },
+          { x: a.p2.X, y: a.p2.Y },
+          { x: b.p2.X, y: b.p2.Y },
+          { x: b.p1.X, y: b.p1.Y },
         ];
         const screenCorners = corners.map((c) => worldToScreen(c.x, c.y, transform));
         ctx.beginPath();
         ctx.moveTo(screenCorners[0].x, screenCorners[0].y);
-        for (let i = 1; i < screenCorners.length; i++) ctx.lineTo(screenCorners[i].x, screenCorners[i].y);
+        for (let i = 1; i < screenCorners.length; i++) {
+          ctx.lineTo(screenCorners[i].x, screenCorners[i].y);
+        }
         ctx.closePath();
         ctx.fillStyle = 'rgba(0, 180, 0, 0.25)';
         ctx.fill();
-        ctx.strokeStyle = 'rgb(0, 140, 0)';
+        ctx.strokeStyle = '#008800';
         ctx.lineWidth = 2;
         ctx.stroke();
       });
-      ctx.restore();
     }
-  }, [normalizedData, transform, hoveredLine, selectedLine, layerVisibility, showPairs, pairsData, showPairsB, pairsDataB, hoveredPair]);
+  }, [normalizedData, transform, hoveredLine, selectedLine, layerVisibility, showPairs, pairsData, hoveredPair, showLogicBPairs, logicBPairsData]);
 
   useEffect(() => {
     if (animationFrameRef.current) {
@@ -1288,22 +1298,22 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
         </button>
 
         <button
-          onClick={() => setShowPairsB(!showPairsB)}
-          disabled={pairsLoadingB}
+          onClick={() => setShowLogicBPairs(!showLogicBPairs)}
+          disabled={logicBPairsLoading}
           style={{
             padding: '8px 16px',
-            backgroundColor: showPairsB ? '#008C00' : '#fff',
-            color: showPairsB ? '#fff' : '#000',
+            backgroundColor: showLogicBPairs ? '#008800' : '#fff',
+            color: showLogicBPairs ? '#fff' : '#000',
             border: '1px solid #ccc',
             borderRadius: '4px',
-            cursor: pairsLoadingB ? 'wait' : 'pointer',
+            cursor: logicBPairsLoading ? 'wait' : 'pointer',
             fontSize: '14px',
             boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-            opacity: pairsLoadingB ? 0.6 : 1,
+            opacity: logicBPairsLoading ? 0.6 : 1,
           }}
-          title="Show/Hide Wall Candidate Pairs B (Logic B)"
+          title="Show/Hide LOGIC B wall pair overlay (green)"
         >
-          {pairsLoadingB ? 'Loading...' : showPairsB ? 'Hide Pairs B' : 'Candidate Pairs B'}
+          {logicBPairsLoading ? 'Loading...' : showLogicBPairs ? 'Hide LOGIC B' : 'Show LOGIC B'}
         </button>
 
         {pairsError && (
@@ -1320,7 +1330,8 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
             {pairsError}
           </div>
         )}
-        {pairsErrorB && (
+
+        {logicBPairsError && (
           <div
             style={{
               padding: '4px 8px',
@@ -1331,7 +1342,7 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
               borderRadius: '4px',
             }}
           >
-            {pairsErrorB}
+            {logicBPairsError}
           </div>
         )}
 

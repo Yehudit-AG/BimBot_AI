@@ -526,22 +526,22 @@ async def get_job_wall_candidate_pairs(
     
     return pairs_data
 
-@app.get("/jobs/{job_id}/wall-candidate-pairs-b", response_model=WallCandidatePairsResponse)
-async def get_job_wall_candidate_pairs_b(
+
+@app.get("/jobs/{job_id}/logic-b-pairs")
+async def get_job_logic_b_pairs(
     job_id: uuid.UUID,
     db: Session = Depends(get_db)
 ):
-    """Get wall candidate pairs B (Logic B: trimmed segments, overlap in mm) for a job."""
+    """Get LOGIC B wall pair candidates for a job (overlap-only trimmed pairs)."""
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-
     artifact_svc = ArtifactService()
-    pairs_data = artifact_svc.get_wall_candidate_pairs_b(db, job_id)
-    if not pairs_data:
-        raise HTTPException(status_code=404, detail="Wall candidate pairs B data not available for this job")
+    data = artifact_svc.get_logic_b_pairs(db, job_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="LOGIC B pairs data not available for this job")
+    return data
 
-    return pairs_data
 
 if __name__ == "__main__":
     import uvicorn

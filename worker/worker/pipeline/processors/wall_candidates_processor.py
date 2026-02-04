@@ -1,6 +1,6 @@
 """
 WALL_CANDIDATES_PLACEHOLDER processor - Mock wall detection and pair-based detection.
-Uses same units as Logic B (see wall_candidate_constants).
+Uses wall_candidate_constants for distance/angle/overlap thresholds.
 """
 
 import time
@@ -9,6 +9,7 @@ import math
 import uuid
 from typing import Dict, Any, List, Tuple, Optional
 from .base_processor import BaseProcessor
+from .line_utils import build_line_like_entities
 from .wall_candidate_constants import (
     ANGULAR_TOLERANCE_DEG,
     MIN_DISTANCE,
@@ -20,7 +21,7 @@ from .wall_candidate_constants import (
 )
 
 class WallCandidatesProcessor(BaseProcessor):
-    """Processor for wall candidate detection with mock and pair-based algorithms (Logic A)."""
+    """Processor for wall candidate detection with mock and pair-based algorithms."""
     
     ANGULAR_TOLERANCE = ANGULAR_TOLERANCE_DEG
     MIN_DISTANCE = MIN_DISTANCE
@@ -46,40 +47,13 @@ class WallCandidatesProcessor(BaseProcessor):
         entities_data = parallel_results.get('entities', {})
         parallel_ready_entities = entities_data.get('parallel_ready_entities', [])
 
-        # Use LINEs plus polyline segments (same as Logic B) so we do not miss candidates from POLYLINE geometry
-        line_entities = self._build_line_like_entities(parallel_ready_entities)
+        # Use LINEs plus polyline segments so we do not miss candidates from POLYLINE geometry
+        line_entities = build_line_like_entities(parallel_ready_entities)
 
         if mode == "pair_based":
             return self._process_pair_based_detection(line_entities, start_time)
         else:
             return self._process_mock_detection(line_entities, start_time)
-
-    def _build_line_like_entities(
-        self, parallel_ready_entities: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
-        """Build line-like list: all LINEs plus each polyline segment as a virtual LINE (same as Logic B)."""
-        out: List[Dict[str, Any]] = []
-        for entity in parallel_ready_entities:
-            etype = entity.get("entity_type")
-            if etype == "LINE":
-                out.append(entity)
-            elif etype == "POLYLINE":
-                nd = entity.get("normalized_data", {})
-                vertices = nd.get("Vertices", [])
-                base_hash = entity.get("entity_hash") or ""
-                layer_name = entity.get("layer_name", "")
-                for i in range(len(vertices) - 1):
-                    seg = {
-                        "entity_type": "LINE",
-                        "entity_hash": f"{base_hash}_seg_{i}",
-                        "layer_name": layer_name,
-                        "normalized_data": {
-                            "Start": vertices[i],
-                            "End": vertices[i + 1],
-                        },
-                    }
-                    out.append(seg)
-        return out
 
     def _analyze_line_for_wall(self, line_entity: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze if a line could be a wall (mock implementation)."""

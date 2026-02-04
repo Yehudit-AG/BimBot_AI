@@ -113,8 +113,8 @@ export const getJobWallCandidatePairs = async (jobId) => {
   return response.data;
 };
 
-export const getJobWallCandidatePairsB = async (jobId) => {
-  const response = await api.get(`/jobs/${jobId}/wall-candidate-pairs-b`);
+export const getJobLogicBPairs = async (jobId) => {
+  const response = await api.get(`/jobs/${jobId}/logic-b-pairs`);
   return response.data;
 };
 

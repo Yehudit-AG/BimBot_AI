@@ -120,7 +120,7 @@ def process_job(job_id_str: str) -> Dict[str, Any]:
                         f.write(json.dumps({"sessionId":"debug-session","runId":"initial","hypothesisId":"A,D","location":"job_processor.py:105","message":"Artifact created","data":{"step_name":step_name,"artifact_type":f"{step_name.lower()}_results","artifact_id":str(artifact.id)},"timestamp":int(time.time()*1000)}) + '\n')
                     # #endregion
 
-        # Create dedicated wall_candidate_pairs and wall_candidate_pairs_b artifacts (single source of truth)
+        # Create dedicated wall_candidate_pairs artifact (single source of truth)
         final_artifacts = artifact_service.store_final_results(db, job_id, results)
         artifacts.extend(final_artifacts)
         

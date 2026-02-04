@@ -242,30 +242,6 @@ class ArtifactService:
                 )
                 artifacts.append(summary_artifact)
 
-            # Store wall candidate pairs B (Logic B) if present
-            if 'WALL_CANDIDATES_B' in final_results:
-                wall_b_data = final_results['WALL_CANDIDATES_B']
-                if wall_b_data and wall_b_data.get('wall_candidate_pairs') is not None:
-                    pairs_b_artifact = self.create_artifact(
-                        db=db,
-                        job_id=job_id,
-                        artifact_type="wall_candidate_pairs_b",
-                        artifact_name="wall_candidate_pairs_b.json",
-                        content={
-                            'pairs': wall_b_data['wall_candidate_pairs'],
-                            'detection_stats': wall_b_data.get('detection_stats', {}),
-                            'algorithm_config': wall_b_data.get('algorithm_config', {}),
-                            'totals': wall_b_data.get('totals', {})
-                        },
-                        metadata={
-                            "result_type": "wall_candidate_pairs_b",
-                            "algorithm": "logic_b",
-                            "pair_count": len(wall_b_data['wall_candidate_pairs'])
-                        }
-                    )
-                    if pairs_b_artifact:
-                        artifacts.append(pairs_b_artifact)
-            
             return artifacts
             
         except Exception as e:
@@ -479,40 +455,26 @@ class ArtifactService:
             )
             return None
 
-    def get_wall_candidate_pairs_b(self, db: Session, job_id: uuid.UUID) -> Optional[Dict[str, Any]]:
-        """Get wall candidate pairs B (Logic B) artifact for a job; each pair includes overlap_percentage."""
+    def get_logic_b_pairs(self, db: Session, job_id: uuid.UUID) -> Optional[Dict[str, Any]]:
+        """Get LOGIC B wall pair candidates artifact for a job."""
         try:
-            # Prefer dedicated artifact (from store_final_results); fallback to step artifact for backward compatibility
             artifact = db.query(Artifact).filter(
                 Artifact.job_id == job_id,
-                Artifact.artifact_type == "wall_candidate_pairs_b"
+                Artifact.artifact_type == "logic_b_pairs"
             ).first()
             if not artifact:
-                artifact = db.query(Artifact).filter(
-                    Artifact.job_id == job_id,
-                    Artifact.artifact_type == "wall_candidates_b_results"
-                ).first()
-
-            if not artifact:
                 return None
-
             content = self.get_artifact_content(artifact)
-            raw_pairs = None
-            if isinstance(content, dict):
-                raw_pairs = content.get("wall_candidate_pairs") or content.get("pairs")
-            if raw_pairs is None:
-                return content
-
-            pairs = self._ensure_pairs_have_overlap_percentage(raw_pairs)
+            if not isinstance(content, dict):
+                return None
             return {
-                "pairs": pairs,
-                "detection_stats": content.get("detection_stats", {}),
+                "pairs": content.get("pairs", []),
                 "algorithm_config": content.get("algorithm_config", {}),
                 "totals": content.get("totals", {}),
             }
         except Exception as e:
             logging_service.logger.error(
-                "Failed to get wall candidate pairs B",
+                "Failed to get logic B pairs",
                 job_id=str(job_id),
                 error=str(e)
             )

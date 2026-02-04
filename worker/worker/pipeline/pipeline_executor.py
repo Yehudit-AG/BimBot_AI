@@ -15,21 +15,21 @@ from .processors.extract_processor import ExtractProcessor
 from .processors.normalize_processor import NormalizeProcessor
 from .processors.clean_dedup_processor import CleanDedupProcessor
 from .processors.parallel_naive_processor import ParallelNaiveProcessor
+from .processors.logic_b_processor import LogicBProcessor
 from .processors.wall_candidates_processor import WallCandidatesProcessor
-from .processors.wall_candidates_processor_b import WallCandidatesProcessorB
 
 logger = structlog.get_logger()
 
 class PipelineExecutor:
-    """Executes the geometry processing pipeline (including Logic A and Logic B wall candidates)."""
+    """Executes the geometry processing pipeline (wall candidate detection)."""
     
     PIPELINE_STEPS = [
         ("EXTRACT", ExtractProcessor),
         ("NORMALIZE", NormalizeProcessor),
         ("CLEAN_DEDUP", CleanDedupProcessor),
         ("PARALLEL_NAIVE", ParallelNaiveProcessor),
+        ("LOGIC_B", LogicBProcessor),
         ("WALL_CANDIDATES_PLACEHOLDER", WallCandidatesProcessor),
-        ("WALL_CANDIDATES_B", WallCandidatesProcessorB),
     ]
     
     def __init__(self, job_id: uuid.UUID, db: Session):

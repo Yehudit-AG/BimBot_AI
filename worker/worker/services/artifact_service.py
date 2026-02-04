@@ -69,9 +69,26 @@ class ArtifactService:
 
     def store_final_results(self, db: Session, job_id: uuid.UUID,
                             final_results: Dict[str, Any]) -> List[Artifact]:
-        """Create dedicated wall_candidate_pairs and wall_candidate_pairs_b artifacts from pipeline results (single source of truth)."""
+        """Create dedicated wall_candidate_pairs artifact from pipeline results (single source of truth)."""
         artifacts: List[Artifact] = []
         try:
+            if 'LOGIC_B' in final_results:
+                logic_b_data = final_results['LOGIC_B']
+                if isinstance(logic_b_data, dict) and logic_b_data.get('logic_b_pairs') is not None:
+                    a = self.create_artifact(
+                        db=db,
+                        job_id=job_id,
+                        artifact_type="logic_b_pairs",
+                        artifact_name="logic_b_pairs.json",
+                        content={
+                            'pairs': logic_b_data['logic_b_pairs'],
+                            'algorithm_config': logic_b_data.get('algorithm_config', {}),
+                            'totals': logic_b_data.get('totals', {}),
+                        },
+                        metadata={"result_type": "logic_b_pairs", "pair_count": len(logic_b_data['logic_b_pairs'])}
+                    )
+                    if a:
+                        artifacts.append(a)
             if 'WALL_CANDIDATES_PLACEHOLDER' in final_results:
                 wall_data = final_results['WALL_CANDIDATES_PLACEHOLDER']
                 if isinstance(wall_data, dict) and wall_data.get('wall_candidate_pairs') is not None:
@@ -87,24 +104,6 @@ class ArtifactService:
                             'totals': wall_data.get('totals', {})
                         },
                         metadata={"result_type": "wall_candidate_pairs", "pair_count": len(wall_data['wall_candidate_pairs'])}
-                    )
-                    if a:
-                        artifacts.append(a)
-            if 'WALL_CANDIDATES_B' in final_results:
-                wall_b_data = final_results['WALL_CANDIDATES_B']
-                if isinstance(wall_b_data, dict) and wall_b_data.get('wall_candidate_pairs') is not None:
-                    a = self.create_artifact(
-                        db=db,
-                        job_id=job_id,
-                        artifact_type="wall_candidate_pairs_b",
-                        artifact_name="wall_candidate_pairs_b.json",
-                        content={
-                            'pairs': wall_b_data['wall_candidate_pairs'],
-                            'detection_stats': wall_b_data.get('detection_stats', {}),
-                            'algorithm_config': wall_b_data.get('algorithm_config', {}),
-                            'totals': wall_b_data.get('totals', {})
-                        },
-                        metadata={"result_type": "wall_candidate_pairs_b", "pair_count": len(wall_b_data['wall_candidate_pairs'])}
                     )
                     if a:
                         artifacts.append(a)

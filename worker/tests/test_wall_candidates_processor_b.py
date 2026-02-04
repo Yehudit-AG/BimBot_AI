@@ -86,6 +86,17 @@ class TestWallCandidatesProcessorB(unittest.TestCase):
         self.assertIsNone(t1)
         self.assertIsNone(t2)
 
+    def test_trim_to_longitudinal_overlap_endpoint_aligned(self):
+        """Overlap touches line2 endpoints; post-clamp overlap length is used (no reject on s_hi<=s_lo)."""
+        line1 = make_line(0, 0, 100, 0)
+        line2 = make_line(80, 30, 100, 30)  # line2 length 20; overlap [80,100] = 20
+        overlap_mm, t1, t2, _, _ = self.processor._trim_to_longitudinal_overlap(line1, line2)
+        self.assertIsNotNone(overlap_mm)
+        self.assertGreaterEqual(overlap_mm, MIN_OVERLAP_LENGTH)
+        self.assertAlmostEqual(overlap_mm, 20.0, places=2)
+        self.assertIsNotNone(t1)
+        self.assertIsNotNone(t2)
+
     def test_process_returns_structure(self):
         line1 = make_line(0, 0, 500, 0, entity_hash="a")
         line2 = make_line(0, 100, 500, 100, entity_hash="b")

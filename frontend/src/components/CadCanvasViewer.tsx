@@ -1472,7 +1472,7 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
             <div>
               <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>Selected Line</div>
               <div>Layer: {normalizedData.layers[selectedLine.layerIdx].name}</div>
-              <div>ID: {selectedLineData.id.substring(0, 16)}...</div>
+              <div>ID: {selectedLineData.id}</div>
               <div>Length: {selectedLineData.length.toFixed(2)}</div>
               <div>
                 Start: ({selectedLineData.x1.toFixed(2)}, {selectedLineData.y1.toFixed(2)})
@@ -1485,7 +1485,7 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
             <div>
               <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>Hovered Line</div>
               <div>Layer: {normalizedData.layers[hoveredLine.layerIdx].name}</div>
-              <div>ID: {hoveredLineData.id.substring(0, 16)}...</div>
+              <div>ID: {hoveredLineData.id}</div>
               <div>Length: {hoveredLineData.length.toFixed(2)}</div>
               <div style={{ fontSize: '11px', color: '#ccc', marginTop: '4px' }}>
                 Click to select
@@ -1494,7 +1494,7 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
           ) : hoveredPairData ? (
             <div>
               <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>Wall Candidate Pair</div>
-              <div>Pair ID: {hoveredPairData.pairId.substring(0, 16)}...</div>
+              <div>Pair ID: {hoveredPairData.pairId}</div>
               <div>Layer 1: {hoveredPairData.layer1}</div>
               <div>Layer 2: {hoveredPairData.layer2}</div>
               <div>Distance: {hoveredPairData.perpendicular_distance.toFixed(2)} mm</div>

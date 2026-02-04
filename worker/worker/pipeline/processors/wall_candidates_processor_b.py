@@ -31,6 +31,7 @@ one virtual LINE per segment. Entities must have normalized_data with Start/End
 - rejection_stats: counts of why candidate pairs were rejected (not_parallel, distance, overlap_*, duplicate).
 """
 
+import sys
 import time
 import math
 import uuid
@@ -56,6 +57,12 @@ REJECTION_REASONS_WITH_NUMERICS = frozenset({
 # Max number of focused logs per reason per run (avoids flood; 1–2 examples usually enough).
 MAX_NUMERICS_LOGS_PER_REASON = 3
 
+# When set, Logic B logs every step only when this exact pair (unordered) is being checked.
+DEBUG_PAIR_HASHES: Optional[frozenset] = frozenset({
+    "5ba60ec18c5551d6e94c076314e1662d822460824673da9fc4ef81de67b19af6",
+    "a74a32881f187ae2a2be9ed53f5bbd12434670aeac47ca19c1ca174a81fb17fc",
+})
+
 
 class WallCandidatesProcessorB(BaseProcessor):
     """Processor for wall candidate detection Logic B: trimmed segments; same units as Logic A."""
@@ -80,6 +87,23 @@ class WallCandidatesProcessorB(BaseProcessor):
         line_like_entities = self._build_line_like_entities(parallel_ready_entities)
         n_line_like = len(line_like_entities)
         total_pairs_checked = n_line_like * (n_line_like - 1) // 2 if n_line_like > 1 else 0
+        debug_pair_indices = None
+        if DEBUG_PAIR_HASHES:
+            pair_indices = {
+                (e.get("entity_hash") or ""): idx
+                for idx, e in enumerate(line_like_entities)
+                if (e.get("entity_hash") or "") in DEBUG_PAIR_HASHES
+            }
+            if len(pair_indices) == 2:
+                debug_pair_indices = dict(pair_indices)
+                self.log_info(
+                    "[LogicB-DEBUG] debug pair both present (IDs as on canvas)",
+                    id_1=list(DEBUG_PAIR_HASHES)[0],
+                    id_2=list(DEBUG_PAIR_HASHES)[1],
+                    position_1=debug_pair_indices.get(list(DEBUG_PAIR_HASHES)[0]),
+                    position_2=debug_pair_indices.get(list(DEBUG_PAIR_HASHES)[1]),
+                    total_line_like=n_line_like,
+                )
         self.log_info(
             "[LogicB] Input",
             line_like=n_line_like,
@@ -88,7 +112,7 @@ class WallCandidatesProcessorB(BaseProcessor):
 
         rejection_stats: Dict[str, int] = {}
         wall_candidate_pairs = self._detect_wall_candidate_pairs(
-            line_like_entities, rejection_stats
+            line_like_entities, rejection_stats, debug_pair_indices=debug_pair_indices
         )
 
         n = len(line_like_entities)
@@ -183,6 +207,7 @@ class WallCandidatesProcessorB(BaseProcessor):
         self,
         line_entities: List[Dict[str, Any]],
         rejection_stats: Optional[Dict[str, int]] = None,
+        debug_pair_indices: Optional[Dict[str, int]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Detect pairs: parallel, distance in range, longitudinal overlap >= MIN_OVERLAP_LENGTH;
@@ -193,14 +218,75 @@ class WallCandidatesProcessorB(BaseProcessor):
         pairs: List[Dict[str, Any]] = []
         seen: set = set()
         overlap_reason: List[str] = []  # reused to get rejection reason from _trim
+        debug_i, debug_j = None, None
+        if debug_pair_indices and len(debug_pair_indices) == 2:
+            idx_list = list(debug_pair_indices.values())
+            debug_i, debug_j = min(idx_list), max(idx_list)
+
+        # Diagnostic: at entry, where are the debug hashes? (same list we're about to iterate)
+        if DEBUG_PAIR_HASHES:
+            at_entry: Dict[str, int] = {}
+            for idx, e in enumerate(line_entities):
+                h = (e.get("entity_hash") or "")
+                if h in DEBUG_PAIR_HASHES:
+                    at_entry[h] = idx
+            if len(at_entry) == 2:
+                self.log_info(
+                    "[LogicB-DEBUG] at entry to _detect_wall_candidate_pairs (hash -> index)",
+                    hash_to_index=at_entry,
+                    expected_from_process=debug_pair_indices,
+                )
+                sys.stderr.flush()
 
         for i, line1 in enumerate(line_entities):
             for j, line2 in enumerate(line_entities[i + 1 :], i + 1):
                 h1 = line1.get("entity_hash") or ""
                 h2 = line2.get("entity_hash") or ""
-
+                is_debug_pair = bool(
+                    DEBUG_PAIR_HASHES and frozenset([h1, h2]) == DEBUG_PAIR_HASHES
+                )
+                # Log when we hit (debug_i, debug_j) so we can see if indices match hashes
+                if debug_i is not None and i == debug_i and j == debug_j and not is_debug_pair:
+                    self.log_info(
+                        "[LogicB-DEBUG] at indices (i,j) from process() but hashes do NOT match debug pair",
+                        position_i=i,
+                        position_j=j,
+                        actual_id_at_i=h1,
+                        actual_id_at_j=h2,
+                        expected_ids=list(DEBUG_PAIR_HASHES) if DEBUG_PAIR_HASHES else [],
+                    )
+                    sys.stderr.flush()
+                if is_debug_pair:
+                    nd1 = line1.get("normalized_data", {}) or {}
+                    nd2 = line2.get("normalized_data", {}) or {}
+                    s1 = nd1.get("Start", {})
+                    e1 = nd1.get("End", {})
+                    s2 = nd2.get("Start", {})
+                    e2 = nd2.get("End", {})
+                    self.log_info(
+                        "[LogicB-DEBUG] >>> CHECKING PAIR (canvas IDs) positions + outcome below <<<",
+                        id_1=h1,
+                        id_2=h2,
+                        position_i=i,
+                        position_j=j,
+                        line1_start_XY=(s1.get("X"), s1.get("Y")),
+                        line1_end_XY=(e1.get("X"), e1.get("Y")),
+                        line2_start_XY=(s2.get("X"), s2.get("Y")),
+                        line2_end_XY=(e2.get("X"), e2.get("Y")),
+                    )
+                    sys.stderr.flush()
                 if not self._are_parallel(line1, line2):
                     rejection_stats["not_parallel"] = rejection_stats.get("not_parallel", 0) + 1
+                    if is_debug_pair:
+                        self.log_info(
+                            "[LogicB-DEBUG] pair rejected: not_parallel",
+                            outcome_he="לא זוג: לא מקבילים",
+                            hash1=h1,
+                            hash2=h2,
+                            index_i=i,
+                            index_j=j,
+                        )
+                        sys.stderr.flush()
                     if VERBOSE_PAIR_LOGGING:
                         self.log_info(
                             "[LogicB] Pair rejected: not_parallel",
@@ -221,6 +307,17 @@ class WallCandidatesProcessorB(BaseProcessor):
                 if overlap_mm is None or overlap_mm < MIN_OVERLAP_LENGTH:
                     reason = overlap_reason[0] if overlap_reason else "overlap_too_short"
                     rejection_stats[reason] = rejection_stats.get(reason, 0) + 1
+                    if is_debug_pair:
+                        self.log_info(
+                            "[LogicB-DEBUG] pair rejected: overlap",
+                            outcome_he="לא זוג: חפיפה לא מספיקה או s מחוץ לטווח",
+                            hash1=h1,
+                            hash2=h2,
+                            reason=reason,
+                            overlap_mm=overlap_mm,
+                            debug_numerics=debug_numerics,
+                        )
+                        sys.stderr.flush()
                     if (
                         reason in REJECTION_REASONS_WITH_NUMERICS
                         and rejection_stats[reason] <= MAX_NUMERICS_LOGS_PER_REASON
@@ -248,6 +345,17 @@ class WallCandidatesProcessorB(BaseProcessor):
                     rejection_stats["distance_out_of_range"] = (
                         rejection_stats.get("distance_out_of_range", 0) + 1
                     )
+                    if is_debug_pair:
+                        self.log_info(
+                            "[LogicB-DEBUG] pair rejected: distance_out_of_range",
+                            outcome_he="לא זוג: מרחק אנכי מחוץ לטווח",
+                            hash1=h1,
+                            hash2=h2,
+                            dist_at_mid=dist_at_mid,
+                            min_d=self.MIN_DISTANCE,
+                            max_d=self.MAX_DISTANCE,
+                        )
+                        sys.stderr.flush()
                     if (
                         rejection_stats["distance_out_of_range"]
                         <= MAX_NUMERICS_LOGS_PER_REASON
@@ -274,6 +382,14 @@ class WallCandidatesProcessorB(BaseProcessor):
                     rejection_stats["duplicate_pair"] = (
                         rejection_stats.get("duplicate_pair", 0) + 1
                     )
+                    if is_debug_pair:
+                        self.log_info(
+                            "[LogicB-DEBUG] pair rejected: duplicate_pair",
+                            outcome_he="לא זוג: זוג כפול",
+                            hash1=h1,
+                            hash2=h2,
+                        )
+                        sys.stderr.flush()
                     continue
                 seen.add(key)
                 if h2 < h1:
@@ -284,6 +400,17 @@ class WallCandidatesProcessorB(BaseProcessor):
                 )
                 if pair:
                     pairs.append(pair)
+                    if is_debug_pair:
+                        self.log_info(
+                            "[LogicB-DEBUG] pair ACCEPTED",
+                            outcome_he="זוג אושר",
+                            hash1=h1,
+                            hash2=h2,
+                            overlap_mm=overlap_mm,
+                            dist_at_mid=dist_at_mid,
+                            pair_id=pair.get("pair_id"),
+                        )
+                        sys.stderr.flush()
 
         # Deterministic order by bounding box centroid then area
         def sort_key(p: Dict[str, Any]) -> Tuple[float, float, float]:
@@ -452,8 +579,9 @@ class WallCandidatesProcessorB(BaseProcessor):
     ) -> Tuple[Optional[float], Optional[Dict], Optional[Dict], Optional[float], Optional[float]]:
         """
         Symmetric longitudinal overlap: project both lines onto line1's direction,
-        take overlap = intersect([t1_min,t1_max], [t2_min,t2_max]). If length >= MIN_OVERLAP_LENGTH,
-        trim both lines to that overlap. For line2 we clamp s to [0,1] (no rejection for s outside).
+        take overlap = intersect([t1_min,t1_max], [t2_min,t2_max]). For line2 we clamp s to [0,1];
+        overlap length is computed after clamping as (s_hi - s_lo) * length2. We reject only when
+        that length is below MIN_OVERLAP_LENGTH (avoids false negatives from floating point at endpoints).
 
         Returns (overlap_length_mm, trimmed1, trimmed2, overlap_start, overlap_end) or (None, None, None, None, None).
         overlap_start/overlap_end are on line1's axis (for distance-at-midpoint).
@@ -535,7 +663,8 @@ class WallCandidatesProcessorB(BaseProcessor):
             if rejection_reason is not None:
                 rejection_reason.append("span2_zero")
             return (None, None, None, None, None)
-        # Map overlap [overlap_start, overlap_end] to line2 parameter s; clamp to [0,1] (symmetric trim, no reject)
+        length2 = math.sqrt((x2b - x2a) ** 2 + (y2b - y2a) ** 2)
+        # Map overlap [overlap_start, overlap_end] to line2 parameter s; clamp to [0,1] (no reject on s)
         denom = t2b - t2a
         s_start_raw = (overlap_start - t2a) / denom if denom != 0 else 0.0
         s_end_raw = (overlap_end - t2a) / denom if denom != 0 else 0.0
@@ -544,10 +673,6 @@ class WallCandidatesProcessorB(BaseProcessor):
             debug_numerics["s_end"] = s_end_raw
         s_lo = max(0.0, min(1.0, min(s_start_raw, s_end_raw)))
         s_hi = max(0.0, min(1.0, max(s_start_raw, s_end_raw)))
-        if s_hi <= s_lo:
-            if rejection_reason is not None:
-                rejection_reason.append("overlap_too_short")
-            return (None, None, None, None, None)
         x2_start = x2a + (x2b - x2a) * s_lo
         y2_start = y2a + (y2b - y2a) * s_lo
         x2_end = x2a + (x2b - x2a) * s_hi
@@ -556,7 +681,12 @@ class WallCandidatesProcessorB(BaseProcessor):
             "start_point": {"X": x2_start, "Y": y2_start, "Z": s2.get("Z", 0)},
             "end_point": {"X": x2_end, "Y": y2_end, "Z": e2.get("Z", 0)},
         }
-
+        overlap_length_after_trim = (s_hi - s_lo) * length2
+        if overlap_length_after_trim < MIN_OVERLAP_LENGTH:
+            if rejection_reason is not None:
+                rejection_reason.append("overlap_too_short")
+            return (None, None, None, None, None)
+        overlap_length_mm = overlap_length_after_trim
         return (overlap_length_mm, trimmed1, trimmed2, overlap_start, overlap_end)
 
     def _create_candidate_pair(

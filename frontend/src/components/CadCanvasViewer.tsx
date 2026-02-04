@@ -140,6 +140,19 @@ interface CadCanvasViewerProps {
 // UTILITY FUNCTIONS
 // ============================================================================
 
+/** Order 4 corners by angle from centroid so the path is a solid quad (no bow-tie X). */
+function orderQuadCorners(corners: Array<{ x: number; y: number }>): Array<{ x: number; y: number }> {
+  if (corners.length !== 4) return corners;
+  const cx = (corners[0].x + corners[1].x + corners[2].x + corners[3].x) / 4;
+  const cy = (corners[0].y + corners[1].y + corners[2].y + corners[3].y) / 4;
+  const withAngle = corners.map((p) => ({
+    ...p,
+    angle: Math.atan2(p.y - cy, p.x - cx),
+  }));
+  withAngle.sort((a, b) => a.angle - b.angle);
+  return withAngle.map(({ x, y }) => ({ x, y }));
+}
+
 function normalizeData(serverData: ServerCanvasData): {
   bbox: BBox;
   layers: NormalizedLayer[];
@@ -862,7 +875,7 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
       console.log('⏸️ Not rendering pairs:', { showPairs, hasData: pairsData !== null });
     }
 
-    // LOGIC B overlay: closed green quad per pair (A_start, A_end, B_end, B_start)
+    // LOGIC B overlay: solid green quad (order corners by angle so no X/bow-tie)
     if (showLogicBPairs && logicBPairsData && logicBPairsData.length > 0) {
       logicBPairsData.forEach((pair) => {
         const a = pair.trimmedSegmentA;
@@ -870,12 +883,12 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
         const br = pair.bounding_rectangle;
         if (!a?.p1 || !a?.p2 || !b?.p1 || !b?.p2) return;
         if (br && !aabbIntersects(br, viewportBBox)) return;
-        const corners = [
+        const corners = orderQuadCorners([
           { x: a.p1.X, y: a.p1.Y },
           { x: a.p2.X, y: a.p2.Y },
-          { x: b.p2.X, y: b.p2.Y },
           { x: b.p1.X, y: b.p1.Y },
-        ];
+          { x: b.p2.X, y: b.p2.Y },
+        ]);
         const screenCorners = corners.map((c) => worldToScreen(c.x, c.y, transform));
         ctx.beginPath();
         ctx.moveTo(screenCorners[0].x, screenCorners[0].y);
@@ -883,9 +896,9 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
           ctx.lineTo(screenCorners[i].x, screenCorners[i].y);
         }
         ctx.closePath();
-        ctx.fillStyle = 'rgba(0, 180, 0, 0.25)';
+        ctx.fillStyle = 'rgba(0, 160, 0, 0.45)';
         ctx.fill();
-        ctx.strokeStyle = '#008800';
+        ctx.strokeStyle = '#006600';
         ctx.lineWidth = 2;
         ctx.stroke();
       });

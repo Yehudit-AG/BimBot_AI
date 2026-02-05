@@ -31,3 +31,10 @@ MOCK_AVERAGE_WALL_THICKNESS = 150.0
 # Angular tolerance for "parallel enough" (degrees). Parallel test:
 # abs(cross2(d1, d2)) <= sin(radians(LOGIC_B_ANGULAR_TOLERANCE_DEG))
 LOGIC_B_ANGULAR_TOLERANCE_DEG = 2.0
+
+# ---------------------------------------------------------------------------
+# LOGIC C (pair filtering by intervening lines)
+# ---------------------------------------------------------------------------
+# Minimum intersection length (mm) with strip interior to count as "blocking".
+# Do not reuse EPS for this; EPS is for numeric robustness only.
+MIN_BLOCKING_LENGTH_MM = 1.0

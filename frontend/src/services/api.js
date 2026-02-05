@@ -118,6 +118,11 @@ export const getJobLogicBPairs = async (jobId) => {
   return response.data;
 };
 
+export const getJobLogicCPairs = async (jobId) => {
+  const response = await api.get(`/jobs/${jobId}/logic-c-pairs`);
+  return response.data;
+};
+
 export const healthCheck = async () => {
   const response = await api.get('/health');
   return response.data;

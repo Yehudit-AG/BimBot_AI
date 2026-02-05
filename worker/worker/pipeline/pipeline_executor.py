@@ -16,6 +16,7 @@ from .processors.normalize_processor import NormalizeProcessor
 from .processors.clean_dedup_processor import CleanDedupProcessor
 from .processors.parallel_naive_processor import ParallelNaiveProcessor
 from .processors.logic_b_processor import LogicBProcessor
+from .processors.logic_c_processor import LogicCProcessor
 from .processors.wall_candidates_processor import WallCandidatesProcessor
 
 logger = structlog.get_logger()
@@ -29,6 +30,7 @@ class PipelineExecutor:
         ("CLEAN_DEDUP", CleanDedupProcessor),
         ("PARALLEL_NAIVE", ParallelNaiveProcessor),
         ("LOGIC_B", LogicBProcessor),
+        ("LOGIC_C", LogicCProcessor),
         ("WALL_CANDIDATES_PLACEHOLDER", WallCandidatesProcessor),
     ]
     

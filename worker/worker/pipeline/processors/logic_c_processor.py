@@ -1,22 +1,62 @@
 """
 LOGIC C processor - Pair filtering by intervening lines.
 
-Consumes LOGIC B pairs and the same line population; rejects any pair for which
-a line (other than the pair's two source lines) has non-trivial intersection
-with the interior of the strip. Uses interior-shrunk strip and dedicated
-blocking-length threshold. Same units and conventions as the rest of the pipeline.
+Consumes LOGIC B pairs and the same line population. Rejects a pair only if
+an *approximately parallel* line (other than the pair's two source lines) has
+non-trivial intersection with the interior of the strip. Non-parallel lines
+(perpendicular, diagonal, etc.) are ignored. Uses same angular tolerance as
+LOGIC B, interior-shrunk strip, and dedicated blocking-length threshold.
 """
 
 import math
 import time
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, Optional
 
 from shapely.geometry import Polygon, LineString
 
 from .base_processor import BaseProcessor
 from .line_utils import build_line_like_entities
-from .wall_candidate_constants import MIN_BLOCKING_LENGTH_MM
+from .wall_candidate_constants import MIN_BLOCKING_LENGTH_MM, LOGIC_B_ANGULAR_TOLERANCE_DEG
 from .units import EPS_MM
+
+
+def _cross2(ax: float, ay: float, bx: float, by: float) -> float:
+    """2D cross product (scalar): ax*by - ay*bx."""
+    return ax * by - ay * bx
+
+
+def _dot2(ax: float, ay: float, bx: float, by: float) -> float:
+    """2D dot product."""
+    return ax * bx + ay * by
+
+
+def _normalize2(x: float, y: float) -> Tuple[float, float]:
+    """Normalize 2D vector in XY; returns (0,0) if length is zero."""
+    L = math.sqrt(x * x + y * y)
+    if L <= 0:
+        return (0.0, 0.0)
+    return (x / L, y / L)
+
+
+def _is_parallel_to(
+    d_pair_x: float, d_pair_y: float,
+    d_k_x: float, d_k_y: float,
+    angular_tolerance_deg: float = LOGIC_B_ANGULAR_TOLERANCE_DEG,
+) -> bool:
+    """
+    True if direction d_k is approximately parallel to d_pair (anti-parallel counts as parallel).
+    Uses same test as LOGIC B: |cross2(d_pair, d_k)| <= sin(tolerance).
+    Both d_pair and d_k must be non-degenerate (caller normalizes).
+    """
+    dkx, dky = _normalize2(d_k_x, d_k_y)
+    if dkx == 0.0 and dky == 0.0:
+        return False
+    dot = _dot2(d_pair_x, d_pair_y, dkx, dky)
+    if dot < 0:
+        dkx, dky = -dkx, -dky
+    cross = abs(_cross2(d_pair_x, d_pair_y, dkx, dky))
+    sin_tol = math.sin(math.radians(angular_tolerance_deg))
+    return cross <= sin_tol
 
 
 def order_quad_corners_xy(corners: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
@@ -38,7 +78,7 @@ def _bbox_intersects(
 
 
 class LogicCProcessor(BaseProcessor):
-    """Filters LOGIC B pairs: reject if any other line intersects strip interior."""
+    """Filters LOGIC B pairs: reject only if a *parallel* other line intersects strip interior."""
 
     def process(self, pipeline_data: Dict[str, Any]) -> Dict[str, Any]:
         self.log_info("Starting LOGIC C (intervening-line filter)")
@@ -72,6 +112,7 @@ class LogicCProcessor(BaseProcessor):
             "algorithm_config": {
                 "eps_mm": EPS_MM,
                 "min_blocking_length_mm": MIN_BLOCKING_LENGTH_MM,
+                "angular_tolerance_deg": LOGIC_B_ANGULAR_TOLERANCE_DEG,
             },
             "totals": {
                 "logic_b_input_count": len(logic_b_pairs),
@@ -121,12 +162,30 @@ class LogicCProcessor(BaseProcessor):
             return []
         return order_quad_corners_xy(corners)
 
+    def _get_pair_direction_xy(self, pair: Dict[str, Any]) -> Optional[Tuple[float, float]]:
+        """Pair direction from trimmed segment A (p2 - p1), normalized in XY. None if degenerate."""
+        a = pair.get("trimmedSegmentA") or {}
+        p1 = a.get("p1") or {}
+        p2 = a.get("p2") or {}
+        x1, y1 = float(p1.get("X", 0)), float(p1.get("Y", 0))
+        x2, y2 = float(p2.get("X", 0)), float(p2.get("Y", 0))
+        dx = x2 - x1
+        dy = y2 - y1
+        d = _normalize2(dx, dy)
+        if d[0] == 0.0 and d[1] == 0.0:
+            return None
+        return d
+
     def _has_intervening(
         self,
         pair: Dict[str, Any],
         line_entities: List[Dict[str, Any]],
         strip_bbox: Tuple[float, float, float, float],
     ) -> bool:
+        d_pair = self._get_pair_direction_xy(pair)
+        if d_pair is None:
+            return False
+
         corners = self._get_quad_corners_xy(pair)
         if len(corners) < 4:
             return False
@@ -143,6 +202,7 @@ class LogicCProcessor(BaseProcessor):
         id_a = pair.get("sourceLineIdA") or ""
         id_b = pair.get("sourceLineIdB") or ""
         s_min_x, s_min_y, s_max_x, s_max_y = strip_bbox
+        d_pair_x, d_pair_y = d_pair
 
         for idx, line_ent in enumerate(line_entities):
             eid = line_ent.get("entity_hash") or ""
@@ -151,11 +211,20 @@ class LogicCProcessor(BaseProcessor):
             l_min_x, l_min_y, l_max_x, l_max_y = self._line_bbox(line_ent)
             if not _bbox_intersects(s_min_x, s_max_x, l_min_x, l_max_x) or not _bbox_intersects(s_min_y, s_max_y, l_min_y, l_max_y):
                 continue
+
             nd = line_ent.get("normalized_data") or {}
             start = nd.get("Start") or {}
             end = nd.get("End") or {}
-            x1, y1 = start.get("X", 0), start.get("Y", 0)
-            x2, y2 = end.get("X", 0), end.get("Y", 0)
+            x1, y1 = float(start.get("X", 0)), float(start.get("Y", 0))
+            x2, y2 = float(end.get("X", 0)), float(end.get("Y", 0))
+            d_k_x = x2 - x1
+            d_k_y = y2 - y1
+            if _normalize2(d_k_x, d_k_y) == (0.0, 0.0):
+                continue
+
+            if not _is_parallel_to(d_pair_x, d_pair_y, d_k_x, d_k_y):
+                continue
+
             try:
                 ls = LineString([(x1, y1), (x2, y2)])
                 if ls.is_empty:

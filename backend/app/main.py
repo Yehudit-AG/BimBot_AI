@@ -559,6 +559,22 @@ async def get_job_logic_c_pairs(
     return data
 
 
+@app.get("/jobs/{job_id}/logic-d-rectangles")
+async def get_job_logic_d_rectangles(
+    job_id: uuid.UUID,
+    db: Session = Depends(get_db)
+):
+    """Get LOGIC D (containment-pruned) rectangles for a job."""
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    artifact_svc = ArtifactService()
+    data = artifact_svc.get_logic_d_rectangles(db, job_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="LOGIC D rectangles data not available for this job")
+    return data
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -123,6 +123,11 @@ export const getJobLogicCPairs = async (jobId) => {
   return response.data;
 };
 
+export const getJobLogicDRectangles = async (jobId) => {
+  const response = await api.get(`/jobs/${jobId}/logic-d-rectangles`);
+  return response.data;
+};
+
 export const healthCheck = async () => {
   const response = await api.get('/health');
   return response.data;

@@ -38,3 +38,12 @@ LOGIC_B_ANGULAR_TOLERANCE_DEG = 2.0
 # Minimum intersection length (mm) with strip interior to count as "blocking".
 # Do not reuse EPS for this; EPS is for numeric robustness only.
 MIN_BLOCKING_LENGTH_MM = 1.0
+
+# ---------------------------------------------------------------------------
+# LOGIC D (containment pruning)
+# ---------------------------------------------------------------------------
+# Tolerance for containment (mm). B is contained in A if A.buffer(TOL_MM).covers(B).
+# Use max(EPS_MM, 0.1) at runtime; 0.1 mm default.
+CONTAINMENT_TOL_MM = 0.1
+# Minimum area difference (mm²) so that A is considered strictly larger than B: area(A) > area(B) + AREA_EPS.
+CONTAINMENT_AREA_EPS_MM2 = 1e-6

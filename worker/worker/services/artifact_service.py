@@ -72,6 +72,23 @@ class ArtifactService:
         """Create dedicated wall_candidate_pairs artifact from pipeline results (single source of truth)."""
         artifacts: List[Artifact] = []
         try:
+            if 'LOGIC_D' in final_results:
+                logic_d_data = final_results['LOGIC_D']
+                if isinstance(logic_d_data, dict) and logic_d_data.get('logic_d_rectangles') is not None:
+                    a = self.create_artifact(
+                        db=db,
+                        job_id=job_id,
+                        artifact_type="logic_d_rectangles",
+                        artifact_name="logic_d_rectangles.json",
+                        content={
+                            'rectangles': logic_d_data['logic_d_rectangles'],
+                            'algorithm_config': logic_d_data.get('algorithm_config', {}),
+                            'totals': logic_d_data.get('totals', {}),
+                        },
+                        metadata={"result_type": "logic_d_rectangles", "rectangle_count": len(logic_d_data['logic_d_rectangles'])}
+                    )
+                    if a:
+                        artifacts.append(a)
             if 'LOGIC_C' in final_results:
                 logic_c_data = final_results['LOGIC_C']
                 if isinstance(logic_c_data, dict) and logic_c_data.get('logic_c_pairs') is not None:

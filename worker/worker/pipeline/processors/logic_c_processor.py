@@ -93,17 +93,22 @@ class LogicCProcessor(BaseProcessor):
         line_entities = build_line_like_entities(parallel_ready_entities)
 
         accepted = self._filter_pairs(logic_b_pairs, line_entities)
+        before_dedup = len(accepted)
+        accepted = self._deduplicate_by_geometry(accepted)
+        dedup_removed = before_dedup - len(accepted)
 
         duration_ms = int((time.time() - start_time) * 1000)
         self.update_metrics(
             duration_ms=duration_ms,
             logic_b_input_count=len(logic_b_pairs),
             logic_c_pairs=len(accepted),
+            logic_c_dedup_removed=dedup_removed,
         )
         self.log_info(
             "LOGIC C completed",
             logic_b_input_count=len(logic_b_pairs),
             logic_c_pairs=len(accepted),
+            logic_c_dedup_removed=dedup_removed,
             duration_ms=duration_ms,
         )
 
@@ -117,6 +122,7 @@ class LogicCProcessor(BaseProcessor):
             "totals": {
                 "logic_b_input_count": len(logic_b_pairs),
                 "logic_c_pairs": len(accepted),
+                "logic_c_dedup_removed": dedup_removed,
             },
         }
 
@@ -251,3 +257,32 @@ class LogicCProcessor(BaseProcessor):
                 continue
             accepted.append(pair)
         return accepted
+
+    def _geometry_key(self, pair: Dict[str, Any]) -> Optional[Tuple[Tuple[float, float], ...]]:
+        """
+        Hashable key for deduplication: 4 corners in canonical order, coordinates rounded
+        to 0.1 mm (DEDUP_OVERLAP_PRECISION_MM) so identical rectangles get the same key.
+        """
+        corners = self._get_quad_corners_xy(pair)
+        if len(corners) != 4:
+            return None
+        # Round to 0.1 mm (one decimal) for stable dedup key
+        return tuple((round(c[0], 1), round(c[1], 1)) for c in corners)
+
+    def _deduplicate_by_geometry(self, pairs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Remove duplicate pairs that represent the same rectangle (same coordinates).
+        Keeps the first occurrence of each unique geometry.
+        """
+        seen_keys: set = set()
+        out: List[Dict[str, Any]] = []
+        for pair in pairs:
+            key = self._geometry_key(pair)
+            if key is None:
+                out.append(pair)
+                continue
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            out.append(pair)
+        return out

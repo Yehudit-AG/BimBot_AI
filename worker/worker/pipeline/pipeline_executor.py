@@ -18,6 +18,7 @@ from .processors.parallel_naive_processor import ParallelNaiveProcessor
 from .processors.logic_b_processor import LogicBProcessor
 from .processors.logic_c_processor import LogicCProcessor
 from .processors.containment_pruning_processor import LogicDProcessor
+from .processors.logic_e_adjacent_merge_processor import LogicEProcessor
 from .processors.wall_candidates_processor import WallCandidatesProcessor
 
 logger = structlog.get_logger()
@@ -33,6 +34,7 @@ class PipelineExecutor:
         ("LOGIC_B", LogicBProcessor),
         ("LOGIC_C", LogicCProcessor),
         ("LOGIC_D", LogicDProcessor),
+        ("LOGIC_E", LogicEProcessor),
         ("WALL_CANDIDATES_PLACEHOLDER", WallCandidatesProcessor),
     ]
     

@@ -47,3 +47,14 @@ MIN_BLOCKING_LENGTH_MM = 1.0
 CONTAINMENT_TOL_MM = 0.1
 # Minimum area difference (mm²) so that A is considered strictly larger than B: area(A) > area(B) + AREA_EPS.
 CONTAINMENT_AREA_EPS_MM2 = 1e-6
+
+# ---------------------------------------------------------------------------
+# LOGIC E (band-based adjacency merge)
+# ---------------------------------------------------------------------------
+# Perpendicular thickness range (mm) for eligibility to merge.
+THICKNESS_MIN_MM = 20.0
+THICKNESS_MAX_MM = 450.0
+# Band line matching: quantize coordinates to this tolerance (mm).
+LINE_COORD_TOL_MM = 0.5
+# Adjacency gap along run axis (mm); intervals within this are mergeable.
+GAP_TOL_MM = 1.0

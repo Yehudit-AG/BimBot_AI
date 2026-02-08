@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { getJobCanvasData, getJobWallCandidatePairs, getJobLogicBPairs, getJobLogicCPairs, getJobLogicDRectangles } from '../services/api';
+import { getJobCanvasData, getJobWallCandidatePairs, getJobLogicBPairs, getJobLogicCPairs, getJobLogicDRectangles, getJobLogicERectangles } from '../services/api';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -457,6 +457,15 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
   const [logicDPairsLoading, setLogicDPairsLoading] = useState(false);
   const [logicDPairsError, setLogicDPairsError] = useState<string | null>(null);
   const [hoveredLogicDPairIdx, setHoveredLogicDPairIdx] = useState<number | null>(null);
+  const [showLogicEPairs, setShowLogicEPairs] = useState(false);
+  const [logicEPairsData, setLogicEPairsData] = useState<Array<{
+    trimmedSegmentA?: { p1?: { X: number; Y: number }; p2?: { X: number; Y: number } };
+    trimmedSegmentB?: { p1?: { X: number; Y: number }; p2?: { X: number; Y: number } };
+    bounding_rectangle?: { minX?: number; minY?: number; maxX?: number; maxY?: number };
+  }> | null>(null);
+  const [logicEPairsLoading, setLogicEPairsLoading] = useState(false);
+  const [logicEPairsError, setLogicEPairsError] = useState<string | null>(null);
+  const [hoveredLogicEPairIdx, setHoveredLogicEPairIdx] = useState<number | null>(null);
   const [moveMode, setMoveMode] = useState(false);
 
   const gridRef = useRef<SpatialGrid | null>(null);
@@ -550,6 +559,10 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
     setLogicDPairsError(null);
     setShowLogicDPairs(false);
     setHoveredLogicDPairIdx(null);
+    setLogicEPairsData(null);
+    setLogicEPairsError(null);
+    setShowLogicEPairs(false);
+    setHoveredLogicEPairIdx(null);
   }, [jobId]);
 
   // ============================================================================
@@ -684,6 +697,30 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
       });
     return () => { cancelled = true; };
   }, [jobId, showLogicDPairs, logicDPairsData]);
+
+  // LOGIC E rectangles: lazy load when overlay is toggled on (same pattern as LOGIC B/C/D)
+  useEffect(() => {
+    if (!showLogicEPairs || logicEPairsData !== null || logicEPairsLoading) return;
+    let cancelled = false;
+    setLogicEPairsLoading(true);
+    setLogicEPairsError(null);
+    getJobLogicERectangles(jobId)
+      .then((data) => {
+        if (!cancelled) {
+          setLogicEPairsData(Array.isArray(data?.rectangles) ? data.rectangles : []);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setLogicEPairsError(err instanceof Error ? err.message : 'Failed to load LOGIC E rectangles');
+          setLogicEPairsData([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLogicEPairsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [jobId, showLogicEPairs, logicEPairsData]);
 
   // ============================================================================
   // SPATIAL GRID BUILDING
@@ -1057,7 +1094,40 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
         ctx.stroke();
       });
     }
-  }, [normalizedData, transform, hoveredLine, selectedLine, layerVisibility, showPairs, pairsData, hoveredPair, showLogicBPairs, logicBPairsData, showLogicCPairs, logicCPairsData, hoveredLogicCPairIdx, showLogicDPairs, logicDPairsData, hoveredLogicDPairIdx]);
+
+    // LOGIC E overlay: solid teal quad (band-merged rectangles); black frame when hovered
+    if (showLogicEPairs && logicEPairsData && logicEPairsData.length > 0) {
+      logicEPairsData.forEach((pair, idx) => {
+        const a = pair.trimmedSegmentA;
+        const b = pair.trimmedSegmentB;
+        const br = pair.bounding_rectangle;
+        if (!a?.p1 || !a?.p2 || !b?.p1 || !b?.p2) return;
+        const brBox: BBox | null = br != null && typeof br.minX === 'number' && typeof br.minY === 'number' && typeof br.maxX === 'number' && typeof br.maxY === 'number'
+          ? { minX: br.minX, minY: br.minY, maxX: br.maxX, maxY: br.maxY }
+          : null;
+        if (brBox && !aabbIntersects(brBox, viewportBBox)) return;
+        const corners = orderQuadCorners([
+          { x: a.p1.X, y: a.p1.Y },
+          { x: a.p2.X, y: a.p2.Y },
+          { x: b.p1.X, y: b.p1.Y },
+          { x: b.p2.X, y: b.p2.Y },
+        ]);
+        const screenCorners = corners.map((c) => worldToScreen(c.x, c.y, transform));
+        ctx.beginPath();
+        ctx.moveTo(screenCorners[0].x, screenCorners[0].y);
+        for (let i = 1; i < screenCorners.length; i++) {
+          ctx.lineTo(screenCorners[i].x, screenCorners[i].y);
+        }
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(0, 128, 128, 0.45)';
+        ctx.fill();
+        const isHovered = hoveredLogicEPairIdx === idx;
+        ctx.strokeStyle = isHovered ? '#000000' : '#008080';
+        ctx.lineWidth = isHovered ? 3 : 2;
+        ctx.stroke();
+      });
+    }
+  }, [normalizedData, transform, hoveredLine, selectedLine, layerVisibility, showPairs, pairsData, hoveredPair, showLogicBPairs, logicBPairsData, showLogicCPairs, logicCPairsData, hoveredLogicCPairIdx, showLogicDPairs, logicDPairsData, hoveredLogicDPairIdx, showLogicEPairs, logicEPairsData, hoveredLogicEPairIdx]);
 
   useEffect(() => {
     if (animationFrameRef.current) {
@@ -1231,6 +1301,42 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
     [showLogicDPairs, logicDPairsData, transform, isPanning]
   );
 
+  const updateLogicEPairsHover = useCallback(
+    (clientX: number, clientY: number) => {
+      if (!showLogicEPairs || !logicEPairsData?.length || !canvasRef.current || isPanning) {
+        setHoveredLogicEPairIdx(null);
+        return;
+      }
+
+      const canvas = canvasRef.current;
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const cssX = (clientX - rect.left) / dpr;
+      const cssY = (clientY - rect.top) / dpr;
+      const worldPoint = screenToWorld(cssX, cssY, transform);
+
+      let found: number | null = null;
+      for (let i = 0; i < logicEPairsData.length; i++) {
+        const pair = logicEPairsData[i];
+        const a = pair.trimmedSegmentA;
+        const b = pair.trimmedSegmentB;
+        if (!a?.p1 || !a?.p2 || !b?.p1 || !b?.p2) continue;
+        const corners = orderQuadCorners([
+          { x: a.p1.X, y: a.p1.Y },
+          { x: a.p2.X, y: a.p2.Y },
+          { x: b.p1.X, y: b.p1.Y },
+          { x: b.p2.X, y: b.p2.Y },
+        ]);
+        if (pointInPolygon(worldPoint.x, worldPoint.y, corners)) {
+          found = i;
+          break;
+        }
+      }
+      setHoveredLogicEPairIdx(found);
+    },
+    [showLogicEPairs, logicEPairsData, transform, isPanning]
+  );
+
   // ============================================================================
   // MOUSE EVENT HANDLERS
   // ============================================================================
@@ -1305,9 +1411,14 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
         } else {
           setHoveredLogicDPairIdx(null);
         }
+        if (showLogicEPairs && logicEPairsData?.length) {
+          updateLogicEPairsHover(e.clientX, e.clientY);
+        } else {
+          setHoveredLogicEPairIdx(null);
+        }
       }
     },
-    [isPanning, panStart, updateHover, showPairs, updatePairsHover, showLogicCPairs, logicCPairsData, updateLogicCPairsHover, showLogicDPairs, logicDPairsData, updateLogicDPairsHover]
+    [isPanning, panStart, updateHover, showPairs, updatePairsHover, showLogicCPairs, logicCPairsData, updateLogicCPairsHover, showLogicDPairs, logicDPairsData, updateLogicDPairsHover, showLogicEPairs, logicEPairsData, updateLogicEPairsHover]
   );
 
   const handleMouseUp = useCallback(() => {
@@ -1328,6 +1439,7 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
     setHoveredPair(null);
     setHoveredLogicCPairIdx(null);
     setHoveredLogicDPairIdx(null);
+    setHoveredLogicEPairIdx(null);
     const canvas = canvasRef.current;
     if (canvas) {
       canvas.style.cursor = moveMode ? 'grab' : '';
@@ -1605,6 +1717,25 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
           {logicDPairsLoading ? 'Loading...' : showLogicDPairs ? 'Hide LOGIC D' : 'Show LOGIC D'}
         </button>
 
+        <button
+          onClick={() => setShowLogicEPairs(!showLogicEPairs)}
+          disabled={logicEPairsLoading}
+          style={{
+            padding: '8px 16px',
+            backgroundColor: showLogicEPairs ? '#008080' : '#fff',
+            color: showLogicEPairs ? '#fff' : '#000',
+            border: '1px solid #ccc',
+            borderRadius: '4px',
+            cursor: logicEPairsLoading ? 'wait' : 'pointer',
+            fontSize: '14px',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+            opacity: logicEPairsLoading ? 0.6 : 1,
+          }}
+          title="Show/Hide LOGIC E wall pair overlay (teal, band-merged rectangles)"
+        >
+          {logicEPairsLoading ? 'Loading...' : showLogicEPairs ? 'Hide LOGIC E' : 'Show LOGIC E'}
+        </button>
+
         {pairsError && (
           <div
             style={{
@@ -1662,6 +1793,21 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
             }}
           >
             {logicDPairsError}
+          </div>
+        )}
+
+        {logicEPairsError && (
+          <div
+            style={{
+              padding: '4px 8px',
+              fontSize: '11px',
+              color: 'red',
+              backgroundColor: '#fff',
+              border: '1px solid #ccc',
+              borderRadius: '4px',
+            }}
+          >
+            {logicEPairsError}
           </div>
         )}
 

@@ -89,6 +89,23 @@ class ArtifactService:
                     )
                     if a:
                         artifacts.append(a)
+            if 'LOGIC_E' in final_results:
+                logic_e_data = final_results['LOGIC_E']
+                if isinstance(logic_e_data, dict) and logic_e_data.get('logic_e_rectangles') is not None:
+                    a = self.create_artifact(
+                        db=db,
+                        job_id=job_id,
+                        artifact_type="logic_e_rectangles",
+                        artifact_name="logic_e_rectangles.json",
+                        content={
+                            'rectangles': logic_e_data['logic_e_rectangles'],
+                            'algorithm_config': logic_e_data.get('algorithm_config', {}),
+                            'totals': logic_e_data.get('totals', {}),
+                        },
+                        metadata={"result_type": "logic_e_rectangles", "rectangle_count": len(logic_e_data['logic_e_rectangles'])}
+                    )
+                    if a:
+                        artifacts.append(a)
             if 'LOGIC_C' in final_results:
                 logic_c_data = final_results['LOGIC_C']
                 if isinstance(logic_c_data, dict) and logic_c_data.get('logic_c_pairs') is not None:

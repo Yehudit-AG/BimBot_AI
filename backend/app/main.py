@@ -16,7 +16,7 @@ import structlog
 
 from .database.connection import get_db
 from .models.database_models import Drawing, Layer, Job, JobStep, JobLog, Artifact, LayerSelection, DrawingWindowDoorBlocks
-from .rules.window_door_layer_rules import is_window_or_door_layer
+from .rules.window_door_layer_rules import is_window_or_door_layer, get_window_door_type
 from .models.api_models import (
     DrawingResponse, LayerResponse, JobResponse, JobStepResponse,
     LayerSelectionRequest, JobCreateRequest, LogResponse,
@@ -336,10 +336,12 @@ async def collect_window_door_blocks(
         if not is_window_or_door_layer(layer_name):
             continue
         layers_matched.add(layer_name)
+        window_or_door = get_window_door_type(layer_name) or "window"
         for block in layer_data.get("Blocks", []):
             collected.append({
                 "layer_name": layer_name,
                 "entity_type": "BLOCK",
+                "window_or_door": window_or_door,
                 "data": block
             })
 
@@ -387,6 +389,33 @@ async def get_window_door_blocks_summary(
         return {"blocks_count": 0, "updated_at": None}
 
     return {
+        "blocks_count": len(record.blocks),
+        "updated_at": record.updated_at.isoformat() if record.updated_at else None
+    }
+
+
+@app.get("/drawings/{drawing_id}/window-door-blocks/list")
+async def get_window_door_blocks_list(
+    drawing_id: uuid.UUID,
+    db: Session = Depends(get_db)
+):
+    """Return full list of collected window/door blocks with all parameters (layer_name, window_or_door, data, etc.)."""
+    drawing = db.query(Drawing).filter(Drawing.id == drawing_id).first()
+    if not drawing:
+        raise HTTPException(status_code=404, detail="Drawing not found")
+
+    record = db.query(DrawingWindowDoorBlocks).filter(
+        DrawingWindowDoorBlocks.drawing_id == drawing_id
+    ).first()
+    if not record or not record.blocks:
+        return {
+            "blocks": [],
+            "blocks_count": 0,
+            "updated_at": None
+        }
+
+    return {
+        "blocks": record.blocks,
         "blocks_count": len(record.blocks),
         "updated_at": record.updated_at.isoformat() if record.updated_at else None
     }

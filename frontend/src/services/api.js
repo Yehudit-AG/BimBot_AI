@@ -82,6 +82,11 @@ export const getWindowDoorBlocksSummary = async (drawingId) => {
   return response.data;
 };
 
+export const getWindowDoorBlocksList = async (drawingId) => {
+  const response = await api.get(`/drawings/${drawingId}/window-door-blocks/list`);
+  return response.data;
+};
+
 export const createJob = async (drawingId, jobData) => {
   const response = await api.post(`/drawings/${drawingId}/jobs`, jobData);
   return response.data;

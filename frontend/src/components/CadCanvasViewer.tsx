@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { getJobCanvasData, getJobWallCandidatePairs, getJobLogicBPairs, getJobLogicCPairs, getJobLogicDRectangles, getJobLogicERectangles } from '../services/api';
+import { getJobCanvasData, getJobWallCandidatePairs, getJobLogicBPairs, getJobLogicCPairs, getJobLogicDRectangles, getJobLogicERectangles, getJobStatus, getWindowDoorBlocksList } from '../services/api';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -134,6 +134,27 @@ interface HoveredPair {
 interface CadCanvasViewerProps {
   jobId: string;
   className?: string;
+}
+
+/** Block data from window/door collection (data field from API). */
+interface WindowDoorBlockData {
+  Position?: { X: number; Y: number; Z?: number };
+  Rotation?: number;
+  rotate?: number;
+  BoundingBox?: {
+    MinPoint: { X: number; Y: number; Z?: number };
+    MaxPoint: { X: number; Y: number; Z?: number };
+  };
+  Name?: string;
+  [key: string]: unknown;
+}
+
+/** One window or door block from GET /drawings/{id}/window-door-blocks/list */
+interface WindowDoorBlock {
+  layer_name: string;
+  entity_type: string;
+  window_or_door: 'window' | 'door';
+  data: WindowDoorBlockData;
 }
 
 // ============================================================================
@@ -327,6 +348,114 @@ function aabbIntersects(a: BBox, b: BBox): boolean {
 }
 
 // ============================================================================
+// WINDOW/DOOR BLOCK HELPERS (0° = North/up, rotation CCW)
+// ============================================================================
+
+function bradanimToDegrees(bradanim: number): number {
+  return bradanim;
+}
+
+/** Return rotation in degrees, snapped to nearest 90° (0, 90, 180, 270) so geometry is axis-aligned. */
+function getBlockRotationDegrees(data: WindowDoorBlockData): number {
+  const raw = data.Rotation ?? data.rotate ?? 0;
+  const degrees = bradanimToDegrees(Number(raw));
+  const rounded = Math.round(degrees);
+  const snapped = Math.round(rounded / 90) * 90;
+  return ((snapped % 360) + 360) % 360;
+}
+
+/** Rotate point (px, py) CCW by angleRad around (cx, cy). 0 = North (+Y). */
+function rotatePoint(px: number, py: number, cx: number, cy: number, angleRad: number): Point {
+  const cos = Math.cos(angleRad);
+  const sin = Math.sin(angleRad);
+  const dx = px - cx;
+  const dy = py - cy;
+  return {
+    x: cx + dx * cos - dy * sin,
+    y: cy + dx * sin + dy * cos,
+  };
+}
+
+/** Shared rotation logic: same for doors and windows. Returns 4 world corners (local 0..3 = minX,minY; maxX,minY; maxX,maxY; minX,maxY) and position. */
+function getBlockWorldCorners(block: WindowDoorBlock): { corners: Point[]; pos: Point } | null {
+  const d = block.data;
+  const bbox = d.BoundingBox;
+  if (!bbox?.MinPoint || !bbox?.MaxPoint) return null;
+  const minX = bbox.MinPoint.X;
+  const minY = bbox.MinPoint.Y;
+  const maxX = bbox.MaxPoint.X;
+  const maxY = bbox.MaxPoint.Y;
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  const pos = d.Position ?? { X: cx, Y: cy };
+  const angleDeg = getBlockRotationDegrees(d);
+  const angleRad = (angleDeg * Math.PI) / 180;
+  const corners = [
+    rotatePoint(minX, minY, cx, cy, angleRad),
+    rotatePoint(maxX, minY, cx, cy, angleRad),
+    rotatePoint(maxX, maxY, cx, cy, angleRad),
+    rotatePoint(minX, maxY, cx, cy, angleRad),
+  ];
+  const tx = pos.X - cx;
+  const ty = pos.Y - cy;
+  return {
+    corners: corners.map((p) => ({ x: p.x + tx, y: p.y + ty })),
+    pos: { x: pos.X, y: pos.Y },
+  };
+}
+
+function getBlockBBoxInWorld(block: WindowDoorBlock): BBox | null {
+  const data = getBlockWorldCorners(block);
+  if (!data) return null;
+  const xs = data.corners.map((p) => p.x);
+  const ys = data.corners.map((p) => p.y);
+  return {
+    minX: Math.min(...xs),
+    minY: Math.min(...ys),
+    maxX: Math.max(...xs),
+    maxY: Math.max(...ys),
+  };
+}
+
+function drawWindow(
+  ctx: CanvasRenderingContext2D,
+  block: WindowDoorBlock,
+  transform: Transform,
+  viewportBBox: BBox,
+  worldToScreen: (wx: number, wy: number, t: Transform) => Point
+): void {
+  const data = getBlockWorldCorners(block);
+  if (!data) return;
+  const { corners } = data;
+  const blockBBox = getBlockBBoxInWorld(block);
+  if (blockBBox && !aabbIntersects(blockBBox, viewportBBox)) return;
+  ctx.strokeStyle = '#4682B4';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i < corners.length; i++) {
+    const p = worldToScreen(corners[i].x, corners[i].y, transform);
+    if (i === 0) ctx.moveTo(p.x, p.y);
+    else ctx.lineTo(p.x, p.y);
+  }
+  ctx.closePath();
+  ctx.stroke();
+  const edge01Len = Math.hypot(corners[1].x - corners[0].x, corners[1].y - corners[0].y);
+  const edge12Len = Math.hypot(corners[2].x - corners[1].x, corners[2].y - corners[1].y);
+  const c1 = edge01Len >= edge12Len
+    ? { x: (corners[0].x + corners[3].x) / 2, y: (corners[0].y + corners[3].y) / 2 }
+    : { x: (corners[0].x + corners[1].x) / 2, y: (corners[0].y + corners[1].y) / 2 };
+  const c2 = edge01Len >= edge12Len
+    ? { x: (corners[1].x + corners[2].x) / 2, y: (corners[1].y + corners[2].y) / 2 }
+    : { x: (corners[3].x + corners[2].x) / 2, y: (corners[3].y + corners[2].y) / 2 };
+  const sc1 = worldToScreen(c1.x, c1.y, transform);
+  const sc2 = worldToScreen(c2.x, c2.y, transform);
+  ctx.beginPath();
+  ctx.moveTo(sc1.x, sc1.y);
+  ctx.lineTo(sc2.x, sc2.y);
+  ctx.stroke();
+}
+
+// ============================================================================
 // SPATIAL GRID
 // ============================================================================
 
@@ -467,6 +596,10 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
   const [logicEPairsError, setLogicEPairsError] = useState<string | null>(null);
   const [hoveredLogicEPairIdx, setHoveredLogicEPairIdx] = useState<number | null>(null);
   const [moveMode, setMoveMode] = useState(false);
+  const [showWindowDoorBlocks, setShowWindowDoorBlocks] = useState(true);
+  const [windowDoorBlocks, setWindowDoorBlocks] = useState<WindowDoorBlock[] | null>(null);
+  const [windowDoorBlocksLoading, setWindowDoorBlocksLoading] = useState(false);
+  const [windowDoorBlocksError, setWindowDoorBlocksError] = useState<string | null>(null);
 
   const gridRef = useRef<SpatialGrid | null>(null);
   const animationFrameRef = useRef<number | null>(null);
@@ -563,6 +696,40 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
     setLogicEPairsError(null);
     setShowLogicEPairs(false);
     setHoveredLogicEPairIdx(null);
+    setWindowDoorBlocks(null);
+    setWindowDoorBlocksError(null);
+  }, [jobId]);
+
+  // Fetch window/door blocks for this job's drawing
+  useEffect(() => {
+    let cancelled = false;
+    const fetchWindowDoorBlocks = async () => {
+      try {
+        setWindowDoorBlocksLoading(true);
+        setWindowDoorBlocksError(null);
+        const job = await getJobStatus(jobId);
+        const drawingId = job?.drawing_id;
+        if (!drawingId) {
+          if (!cancelled) setWindowDoorBlocks([]);
+          return;
+        }
+        const res = await getWindowDoorBlocksList(drawingId);
+        if (!cancelled && Array.isArray(res?.blocks)) {
+          setWindowDoorBlocks(res.blocks);
+        } else if (!cancelled) {
+          setWindowDoorBlocks([]);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setWindowDoorBlocksError(err instanceof Error ? err.message : 'Failed to load windows');
+          setWindowDoorBlocks([]);
+        }
+      } finally {
+        if (!cancelled) setWindowDoorBlocksLoading(false);
+      }
+    };
+    fetchWindowDoorBlocks();
+    return () => { cancelled = true; };
   }, [jobId]);
 
   // ============================================================================
@@ -901,6 +1068,15 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
       }
     });
 
+    // Render window blocks only (from collected list; doors are not drawn)
+    if (showWindowDoorBlocks && windowDoorBlocks && windowDoorBlocks.length > 0) {
+      windowDoorBlocks.forEach((block) => {
+        if (block.window_or_door === 'window') {
+          drawWindow(ctx, block, transform, viewportBBox, worldToScreen);
+        }
+      });
+    }
+
     // Render hovered line (above others)
     if (hoveredLine && !selectedLine) {
       const layer = normalizedData.layers[hoveredLine.layerIdx];
@@ -1127,7 +1303,7 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
         ctx.stroke();
       });
     }
-  }, [normalizedData, transform, hoveredLine, selectedLine, layerVisibility, showPairs, pairsData, hoveredPair, showLogicBPairs, logicBPairsData, showLogicCPairs, logicCPairsData, hoveredLogicCPairIdx, showLogicDPairs, logicDPairsData, hoveredLogicDPairIdx, showLogicEPairs, logicEPairsData, hoveredLogicEPairIdx]);
+  }, [normalizedData, transform, hoveredLine, selectedLine, layerVisibility, showPairs, pairsData, hoveredPair, showLogicBPairs, logicBPairsData, showLogicCPairs, logicCPairsData, hoveredLogicCPairIdx, showLogicDPairs, logicDPairsData, hoveredLogicDPairIdx, showLogicEPairs, logicEPairsData, hoveredLogicEPairIdx, showWindowDoorBlocks, windowDoorBlocks]);
 
   useEffect(() => {
     if (animationFrameRef.current) {
@@ -1658,6 +1834,25 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
           title="Show/Hide Wall Candidate Pairs"
         >
           {pairsLoading ? 'Loading...' : showPairs ? 'Hide Pairs' : 'Show Pairs'}
+        </button>
+
+        <button
+          onClick={() => setShowWindowDoorBlocks(!showWindowDoorBlocks)}
+          disabled={windowDoorBlocksLoading}
+          style={{
+            padding: '8px 16px',
+            backgroundColor: showWindowDoorBlocks ? '#2E8B57' : '#fff',
+            color: showWindowDoorBlocks ? '#fff' : '#000',
+            border: '1px solid #ccc',
+            borderRadius: '4px',
+            cursor: windowDoorBlocksLoading ? 'wait' : 'pointer',
+            fontSize: '14px',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+            opacity: windowDoorBlocksLoading ? 0.6 : 1,
+          }}
+          title="Show/Hide collected windows"
+        >
+          {windowDoorBlocksLoading ? 'Loading...' : showWindowDoorBlocks ? 'Hide Windows & Doors' : 'Show Windows & Doors'}
         </button>
 
         <button

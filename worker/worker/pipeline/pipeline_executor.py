@@ -10,7 +10,7 @@ from typing import Dict, Any, List
 from sqlalchemy.orm import Session
 import structlog
 
-from ..database_models import Job, JobStep, JobLog, Artifact, Drawing, Layer
+from ..database_models import Job, JobStep, JobLog, Artifact, Drawing, Layer, DrawingWindowDoorBlocks
 from .processors.extract_processor import ExtractProcessor
 from .processors.normalize_processor import NormalizeProcessor
 from .processors.clean_dedup_processor import CleanDedupProcessor
@@ -71,11 +71,18 @@ class PipelineExecutor:
         # Load drawing data
         drawing_data = self._load_drawing_data(drawing)
         
+        # Load collected window/door blocks for this drawing (if any)
+        window_door_record = self.db.query(DrawingWindowDoorBlocks).filter(
+            DrawingWindowDoorBlocks.drawing_id == drawing.id
+        ).first()
+        window_door_blocks = list(window_door_record.blocks) if window_door_record and window_door_record.blocks else []
+        
         # Initialize pipeline data
         pipeline_data = {
             'drawing': drawing_data,
             'selected_layers': selected_layers,
-            'layer_names': [layer.layer_name for layer in selected_layers]
+            'layer_names': [layer.layer_name for layer in selected_layers],
+            'window_door_blocks': window_door_blocks
         }
         
         results = {}

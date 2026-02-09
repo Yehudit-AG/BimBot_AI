@@ -72,6 +72,16 @@ export const updateLayerSelection = async (drawingId, selectedLayerIds) => {
   return response.data;
 };
 
+export const collectWindowDoorBlocks = async (drawingId) => {
+  const response = await api.post(`/drawings/${drawingId}/window-door-blocks`);
+  return response.data;
+};
+
+export const getWindowDoorBlocksSummary = async (drawingId) => {
+  const response = await api.get(`/drawings/${drawingId}/window-door-blocks`);
+  return response.data;
+};
+
 export const createJob = async (drawingId, jobData) => {
   const response = await api.post(`/drawings/${drawingId}/jobs`, jobData);
   return response.data;

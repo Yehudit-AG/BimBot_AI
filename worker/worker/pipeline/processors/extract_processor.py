@@ -68,6 +68,17 @@ class ExtractProcessor(BaseProcessor):
                 'total_entities': len(lines) + len(polylines) + len(blocks)
             }
         
+        # Merge collected window/door blocks (from Layer Manager) into entities
+        window_door_blocks = pipeline_data.get('window_door_blocks', [])
+        extracted_entities['blocks'].extend(window_door_blocks)
+        if window_door_blocks:
+            layer_stats['_window_door_collected'] = {
+                'lines_count': 0,
+                'polylines_count': 0,
+                'blocks_count': len(window_door_blocks),
+                'total_entities': len(window_door_blocks)
+            }
+        
         # Calculate totals
         total_lines = len(extracted_entities['lines'])
         total_polylines = len(extracted_entities['polylines'])

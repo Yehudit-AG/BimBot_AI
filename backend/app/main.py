@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException, UploadFile, File, Depends, Backgroun
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 import json
 import uuid
 import os
@@ -15,7 +15,8 @@ from typing import List, Optional
 import structlog
 
 from .database.connection import get_db
-from .models.database_models import Drawing, Layer, Job, JobStep, JobLog, Artifact, LayerSelection
+from .models.database_models import Drawing, Layer, Job, JobStep, JobLog, Artifact, LayerSelection, DrawingWindowDoorBlocks
+from .rules.window_door_layer_rules import is_window_or_door_layer
 from .models.api_models import (
     DrawingResponse, LayerResponse, JobResponse, JobStepResponse,
     LayerSelectionRequest, JobCreateRequest, LogResponse,
@@ -49,6 +50,19 @@ app.add_middleware(
 # Initialize services
 file_service = FileService()
 job_service = JobService()
+
+
+@app.exception_handler(OperationalError)
+async def db_operational_error_handler(request, exc):
+    """Return 503 with detail so CORS headers are applied and client sees a clear message."""
+    detail = str(getattr(exc, "orig", exc))
+    if "drawing_window_door_blocks" in detail or "does not exist" in detail.lower():
+        detail = (
+            "Database schema is missing the window/door blocks table. "
+            "Run migration: database/migrations/002_drawing_window_door_blocks.sql"
+        )
+    raise HTTPException(status_code=503, detail=detail)
+
 
 @app.get("/health")
 async def health_check():
@@ -285,6 +299,98 @@ async def update_layer_selection(
     )
     
     return {"message": "Layer selection updated successfully"}
+
+
+@app.post("/drawings/{drawing_id}/window-door-blocks")
+async def collect_window_door_blocks(
+    drawing_id: uuid.UUID,
+    db: Session = Depends(get_db)
+):
+    """Collect blocks from window/door layers per drawing JSON and persist them."""
+    request_id = str(uuid.uuid4())
+    logger.info(
+        "Window/door blocks collection started",
+        request_id=request_id,
+        drawing_id=str(drawing_id)
+    )
+
+    drawing = db.query(Drawing).filter(Drawing.id == drawing_id).first()
+    if not drawing:
+        raise HTTPException(status_code=404, detail="Drawing not found")
+
+    if not os.path.isfile(drawing.filename):
+        raise HTTPException(
+            status_code=404,
+            detail="Drawing file not found; cannot read layer data"
+        )
+
+    with open(drawing.filename, "r", encoding="utf-8") as f:
+        drawing_data = json.load(f)
+
+    layers_data = drawing_data.get("Layers", [])
+    collected = []
+    layers_matched = set()
+
+    for layer_data in layers_data:
+        layer_name = layer_data.get("LayerName", "")
+        if not is_window_or_door_layer(layer_name):
+            continue
+        layers_matched.add(layer_name)
+        for block in layer_data.get("Blocks", []):
+            collected.append({
+                "layer_name": layer_name,
+                "entity_type": "BLOCK",
+                "data": block
+            })
+
+    record = db.query(DrawingWindowDoorBlocks).filter(
+        DrawingWindowDoorBlocks.drawing_id == drawing_id
+    ).first()
+    if record:
+        record.blocks = collected
+    else:
+        record = DrawingWindowDoorBlocks(
+            drawing_id=drawing_id,
+            blocks=collected
+        )
+        db.add(record)
+    db.commit()
+
+    logger.info(
+        "Window/door blocks collection completed",
+        request_id=request_id,
+        drawing_id=str(drawing_id),
+        blocks_count=len(collected),
+        layers_matched=len(layers_matched)
+    )
+    return {
+        "blocks_count": len(collected),
+        "layers_matched": len(layers_matched),
+        "layer_names": list(layers_matched)
+    }
+
+
+@app.get("/drawings/{drawing_id}/window-door-blocks")
+async def get_window_door_blocks_summary(
+    drawing_id: uuid.UUID,
+    db: Session = Depends(get_db)
+):
+    """Return summary of collected window/door blocks for a drawing."""
+    drawing = db.query(Drawing).filter(Drawing.id == drawing_id).first()
+    if not drawing:
+        raise HTTPException(status_code=404, detail="Drawing not found")
+
+    record = db.query(DrawingWindowDoorBlocks).filter(
+        DrawingWindowDoorBlocks.drawing_id == drawing_id
+    ).first()
+    if not record or not record.blocks:
+        return {"blocks_count": 0, "updated_at": None}
+
+    return {
+        "blocks_count": len(record.blocks),
+        "updated_at": record.updated_at.isoformat() if record.updated_at else None
+    }
+
 
 @app.post("/drawings/{drawing_id}/jobs", response_model=JobResponse)
 async def create_job(

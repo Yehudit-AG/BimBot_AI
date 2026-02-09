@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from 'react-query';
-import { getDrawingLayers, updateLayerSelection, createJob } from '../services/api';
+import { getDrawingLayers, updateLayerSelection, createJob, collectWindowDoorBlocks, getWindowDoorBlocksSummary } from '../services/api';
 
 const LayerManagement = () => {
   const { drawingId } = useParams();
@@ -9,6 +9,7 @@ const LayerManagement = () => {
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedLayers, setSelectedLayers] = useState(new Set());
+  const [windowDoorMessage, setWindowDoorMessage] = useState(null);
 
   const { data: layers, isLoading, error } = useQuery(
     ['layers', drawingId],
@@ -40,6 +41,25 @@ const LayerManagement = () => {
         navigate(`/jobs/${data.id}`);
       }
     }
+  );
+
+  const collectWindowDoorMutation = useMutation(
+    () => collectWindowDoorBlocks(drawingId),
+    {
+      onSuccess: (data) => {
+        setWindowDoorMessage(`Collected ${data.blocks_count} blocks from ${data.layers_matched} window/door layers.`);
+        queryClient.invalidateQueries(['windowDoorSummary', drawingId]);
+      },
+      onError: () => {
+        setWindowDoorMessage(null);
+      }
+    }
+  );
+
+  const { data: windowDoorSummary } = useQuery(
+    ['windowDoorSummary', drawingId],
+    () => getWindowDoorBlocksSummary(drawingId),
+    { enabled: !!drawingId }
   );
 
   const filteredLayers = useMemo(() => {
@@ -77,7 +97,17 @@ const LayerManagement = () => {
       alert('Please select at least one layer to process');
       return;
     }
-    createJobMutation.mutate();
+    // Persist current selection first, then create job (so backend sees selected layers)
+    updateSelectionMutation.mutate(Array.from(selectedLayers), {
+      onSuccess: () => {
+        createJobMutation.mutate();
+      }
+    });
+  };
+
+  const handleCollectWindowDoorBlocks = () => {
+    setWindowDoorMessage(null);
+    collectWindowDoorMutation.mutate();
   };
 
   const getEntityTypeBadges = (layer) => {
@@ -131,13 +161,21 @@ const LayerManagement = () => {
           <div className="layer-stats">
             <span className="text-muted">
               {layers?.length || 0} layers, {selectedLayers.size} selected
+              {windowDoorSummary?.blocks_count != null && windowDoorSummary.blocks_count > 0 && (
+                <> · {windowDoorSummary.blocks_count} window/door blocks collected</>
+              )}
             </span>
           </div>
         </div>
         <div className="card-body">
-          {(updateSelectionMutation.error || createJobMutation.error) && (
+          {(updateSelectionMutation.error || createJobMutation.error || collectWindowDoorMutation.error) && (
             <div className="alert alert-danger">
-              Error: {updateSelectionMutation.error?.message || createJobMutation.error?.message}
+              Error: {updateSelectionMutation.error?.message || createJobMutation.error?.message || collectWindowDoorMutation.error?.message}
+            </div>
+          )}
+          {windowDoorMessage && (
+            <div className="alert alert-success">
+              {windowDoorMessage}
             </div>
           )}
 
@@ -166,11 +204,23 @@ const LayerManagement = () => {
                 {updateSelectionMutation.isLoading ? 'Updating...' : 'Update Selection'}
               </button>
               <button
+                className="btn btn-info"
+                onClick={handleCollectWindowDoorBlocks}
+                disabled={collectWindowDoorMutation.isLoading}
+              >
+                {collectWindowDoorMutation.isLoading ? 'Collecting...' : 'Collect Window & Door Blocks'}
+              </button>
+              <button
                 className="btn btn-success"
                 onClick={handleStartProcessing}
-                disabled={createJobMutation.isLoading || selectedLayers.size === 0}
+                disabled={createJobMutation.isLoading || updateSelectionMutation.isLoading || selectedLayers.size === 0}
               >
-                {createJobMutation.isLoading ? (
+                {updateSelectionMutation.isLoading ? (
+                  <>
+                    <span className="spinner"></span>
+                    Saving...
+                  </>
+                ) : createJobMutation.isLoading ? (
                   <>
                     <span className="spinner"></span>
                     Starting...

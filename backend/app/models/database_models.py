@@ -28,6 +28,18 @@ class Drawing(Base):
     # Relationships
     layers = relationship("Layer", back_populates="drawing", cascade="all, delete-orphan")
     jobs = relationship("Job", back_populates="drawing", cascade="all, delete-orphan")
+    window_door_blocks = relationship("DrawingWindowDoorBlocks", back_populates="drawing", uselist=False, cascade="all, delete-orphan")
+
+class DrawingWindowDoorBlocks(Base):
+    __tablename__ = "drawing_window_door_blocks"
+
+    drawing_id = Column(UUID(as_uuid=True), ForeignKey("drawings.id", ondelete="CASCADE"), primary_key=True)
+    blocks = Column(JSONB, nullable=False, default=lambda: [])
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    drawing = relationship("Drawing", back_populates="window_door_blocks")
 
 class Layer(Base):
     __tablename__ = "layers"

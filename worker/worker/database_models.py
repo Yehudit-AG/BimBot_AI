@@ -13,7 +13,7 @@ Base = declarative_base()
 
 class Drawing(Base):
     __tablename__ = "drawings"
-    
+
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     filename = Column(String(255), nullable=False)
     original_filename = Column(String(255), nullable=False)
@@ -22,6 +22,14 @@ class Drawing(Base):
     upload_timestamp = Column(DateTime(timezone=True), server_default=func.now())
     status = Column(String(50), default='uploaded')
     drawing_metadata = Column(JSONB, name='metadata')
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+class DrawingWindowDoorBlocks(Base):
+    __tablename__ = "drawing_window_door_blocks"
+
+    drawing_id = Column(UUID(as_uuid=True), ForeignKey("drawings.id", ondelete="CASCADE"), primary_key=True)
+    blocks = Column(JSONB, nullable=False, default=lambda: [])
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

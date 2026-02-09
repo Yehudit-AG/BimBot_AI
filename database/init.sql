@@ -44,6 +44,14 @@ CREATE TABLE layer_selections (
     UNIQUE(drawing_id, layer_id)
 );
 
+-- Window/door blocks table - Collected blocks from window/door layers (one row per drawing)
+CREATE TABLE drawing_window_door_blocks (
+    drawing_id UUID PRIMARY KEY REFERENCES drawings(id) ON DELETE CASCADE,
+    blocks JSONB NOT NULL DEFAULT '[]',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Jobs table - Job lifecycle and status tracking
 CREATE TABLE jobs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -154,6 +162,9 @@ CREATE TRIGGER update_drawings_updated_at BEFORE UPDATE ON drawings
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_jobs_updated_at BEFORE UPDATE ON jobs
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_drawing_window_door_blocks_updated_at BEFORE UPDATE ON drawing_window_door_blocks
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Insert initial data for testing

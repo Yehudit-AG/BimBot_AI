@@ -35,19 +35,62 @@ def _get_bounds(rect: Dict[str, Any]) -> Optional[Tuple[float, float, float, flo
     return (min(xs), min(ys), max(xs), max(ys))
 
 
+def _point_dict(x: float, y: float) -> Dict[str, float]:
+    """Build {X, Y} point dict for segment storage."""
+    return {"X": x, "Y": y}
+
+
 def _bounds_to_quad_dict(xmin: float, ymin: float, xmax: float, ymax: float) -> Dict[str, Any]:
-    """Build a quad dict (same schema as LOGIC C/D) from axis-aligned bounds. Clockwise from (xmin, ymin)."""
+    """
+    Build a quad dict (same schema as LOGIC C/D) from axis-aligned bounds.
+    Clockwise from (xmin, ymin). Includes auxiliary segments (cap lines that close the quad)
+    and segment sources so consumers can distinguish real drawing lines from helper lines.
+    """
+    # Two cap segments that close the rectangle: right edge, left edge
+    auxiliary_segments = [
+        {"p1": _point_dict(xmax, ymin), "p2": _point_dict(xmax, ymax)},
+        {"p1": _point_dict(xmin, ymax), "p2": _point_dict(xmin, ymin)},
+    ]
     return {
         "trimmedSegmentA": {
-            "p1": {"X": xmin, "Y": ymin},
-            "p2": {"X": xmax, "Y": ymin},
+            "p1": _point_dict(xmin, ymin),
+            "p2": _point_dict(xmax, ymin),
         },
         "trimmedSegmentB": {
-            "p1": {"X": xmax, "Y": ymax},
-            "p2": {"X": xmin, "Y": ymax},
+            "p1": _point_dict(xmax, ymax),
+            "p2": _point_dict(xmin, ymax),
         },
         "bounding_rectangle": {"minX": xmin, "minY": ymin, "maxX": xmax, "maxY": ymax},
+        "auxiliarySegments": auxiliary_segments,
+        "trimmedSegmentA_source": "from_merge",
+        "trimmedSegmentB_source": "from_merge",
     }
+
+
+def _enrich_rect_with_auxiliary(rect: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Add auxiliary segments (cap lines that close the quad) and segment-source fields
+    to a rectangle from Logic D. trimmedSegmentA/trimmedSegmentB are from the drawing;
+    the two cap segments are added explicitly as auxiliary so consumers can tell real
+    vs helper lines.
+    """
+    out = dict(rect)
+    a = out.get("trimmedSegmentA") or {}
+    b = out.get("trimmedSegmentB") or {}
+    p1a = a.get("p1") or {}
+    p2a = a.get("p2") or {}
+    p1b = b.get("p1") or {}
+    p2b = b.get("p2") or {}
+    # Quad order: A.p1, A.p2, B.p2, B.p1. Cap segments: (A.p2 -> B.p2), (B.p1 -> A.p1)
+    def pt(d: Dict[str, Any]) -> Dict[str, float]:
+        return {"X": float(d.get("X", 0)), "Y": float(d.get("Y", 0))}
+    out["auxiliarySegments"] = [
+        {"p1": pt(p2a), "p2": pt(p2b)},
+        {"p1": pt(p1b), "p2": pt(p1a)},
+    ]
+    out["trimmedSegmentA_source"] = "from_drawing"
+    out["trimmedSegmentB_source"] = "from_drawing"
+    return out
 
 
 def _quantize(v: float, tol: float) -> int:
@@ -157,7 +200,8 @@ def merge_adjacent_rectangles(
         else:
             out.append(_bounds_to_quad_dict(band_min, cur_start, band_max, cur_end))
 
-    out.extend(ineligible)
+    # Ineligible rectangles (passed through from Logic D): add auxiliary segments and mark A/B as from_drawing
+    out.extend(_enrich_rect_with_auxiliary(r) for r in ineligible)
     return out
 
 

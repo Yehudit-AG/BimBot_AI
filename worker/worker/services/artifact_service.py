@@ -106,6 +106,23 @@ class ArtifactService:
                     )
                     if a:
                         artifacts.append(a)
+            if 'DOOR_RECTANGLE_ASSIGNMENT' in final_results:
+                door_assign_data = final_results['DOOR_RECTANGLE_ASSIGNMENT']
+                if isinstance(door_assign_data, dict) and door_assign_data.get('door_assignments') is not None:
+                    a = self.create_artifact(
+                        db=db,
+                        job_id=job_id,
+                        artifact_type="door_rectangle_assignments",
+                        artifact_name="door_rectangle_assignments.json",
+                        content={
+                            'door_assignments': door_assign_data['door_assignments'],
+                            'algorithm_config': door_assign_data.get('algorithm_config', {}),
+                            'totals': door_assign_data.get('totals', {}),
+                        },
+                        metadata={"result_type": "door_rectangle_assignments", "door_count": len(door_assign_data['door_assignments'])}
+                    )
+                    if a:
+                        artifacts.append(a)
             if 'LOGIC_C' in final_results:
                 logic_c_data = final_results['LOGIC_C']
                 if isinstance(logic_c_data, dict) and logic_c_data.get('logic_c_pairs') is not None:

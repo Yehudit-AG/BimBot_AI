@@ -19,6 +19,7 @@ from .processors.logic_b_processor import LogicBProcessor
 from .processors.logic_c_processor import LogicCProcessor
 from .processors.containment_pruning_processor import LogicDProcessor
 from .processors.logic_e_adjacent_merge_processor import LogicEProcessor
+from .processors.door_rectangle_assignment_processor import DoorRectangleAssignmentProcessor
 from .processors.wall_candidates_processor import WallCandidatesProcessor
 
 logger = structlog.get_logger()
@@ -35,6 +36,7 @@ class PipelineExecutor:
         ("LOGIC_C", LogicCProcessor),
         ("LOGIC_D", LogicDProcessor),
         ("LOGIC_E", LogicEProcessor),
+        ("DOOR_RECTANGLE_ASSIGNMENT", DoorRectangleAssignmentProcessor),
         ("WALL_CANDIDATES_PLACEHOLDER", WallCandidatesProcessor),
     ]
     

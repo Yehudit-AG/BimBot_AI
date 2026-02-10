@@ -555,5 +555,30 @@ class ArtifactService:
             )
             return None
 
+    def get_door_rectangle_assignments(self, db: Session, job_id: uuid.UUID) -> Optional[Dict[str, Any]]:
+        """Get door-rectangle assignment summary artifact for a job."""
+        try:
+            artifact = db.query(Artifact).filter(
+                Artifact.job_id == job_id,
+                Artifact.artifact_type == "door_rectangle_assignments"
+            ).first()
+            if not artifact:
+                return None
+            content = self.get_artifact_content(artifact)
+            if not isinstance(content, dict):
+                return None
+            return {
+                "door_assignments": content.get("door_assignments", []),
+                "algorithm_config": content.get("algorithm_config", {}),
+                "totals": content.get("totals", {}),
+            }
+        except Exception as e:
+            logging_service.logger.error(
+                "Failed to get door rectangle assignments",
+                job_id=str(job_id),
+                error=str(e)
+            )
+            return None
+
 # Global artifact service instance
 artifact_service = ArtifactService()

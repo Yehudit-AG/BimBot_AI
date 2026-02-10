@@ -1303,6 +1303,7 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
         ctx.stroke();
       });
     }
+
   }, [normalizedData, transform, hoveredLine, selectedLine, layerVisibility, showPairs, pairsData, hoveredPair, showLogicBPairs, logicBPairsData, showLogicCPairs, logicCPairsData, hoveredLogicCPairIdx, showLogicDPairs, logicDPairsData, hoveredLogicDPairIdx, showLogicEPairs, logicEPairsData, hoveredLogicEPairIdx, showWindowDoorBlocks, windowDoorBlocks]);
 
   useEffect(() => {
@@ -1589,7 +1590,8 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
         }
         if (showLogicEPairs && logicEPairsData?.length) {
           updateLogicEPairsHover(e.clientX, e.clientY);
-        } else {
+        }
+ else {
           setHoveredLogicEPairIdx(null);
         }
       }

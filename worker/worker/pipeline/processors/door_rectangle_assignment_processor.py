@@ -76,6 +76,23 @@ def _get_door_world_bbox(block_data: Dict[str, Any]) -> Optional[Tuple[float, fl
     return (min(xs), min(ys), max(xs), max(ys))
 
 
+def _get_door_center(block_data: Dict[str, Any]) -> Optional[Tuple[float, float]]:
+    """
+    Get door center (x, y) from door block data only – never from rectangle pairs.
+    Uses Position (insertion point) if present, else center of world bounding box.
+    """
+    pos = block_data.get("Position") or block_data.get("InsertionPoint") or {}
+    px = pos.get("X")
+    py = pos.get("Y")
+    if px is not None and py is not None:
+        return (float(px), float(py))
+    bbox = _get_door_world_bbox(block_data)
+    if not bbox:
+        return None
+    xmin, ymin, xmax, ymax = bbox
+    return ((xmin + xmax) / 2.0, (ymin + ymax) / 2.0)
+
+
 def _aabb_intersects(
     a: Tuple[float, float, float, float],
     b: Tuple[float, float, float, float],

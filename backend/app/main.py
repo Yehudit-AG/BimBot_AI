@@ -742,6 +742,22 @@ async def get_job_door_rectangle_assignments(
     return data
 
 
+@app.get("/jobs/{job_id}/door-bridges")
+async def get_job_door_bridges(
+    job_id: uuid.UUID,
+    db: Session = Depends(get_db)
+):
+    """Get door bridge results for a job (one bridge rectangle per door or null)."""
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    artifact_svc = ArtifactService()
+    data = artifact_svc.get_door_bridges(db, job_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="Door bridges not available for this job")
+    return data
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

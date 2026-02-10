@@ -123,6 +123,23 @@ class ArtifactService:
                     )
                     if a:
                         artifacts.append(a)
+            if 'DOOR_BRIDGE' in final_results:
+                door_bridge_data = final_results['DOOR_BRIDGE']
+                if isinstance(door_bridge_data, dict) and door_bridge_data.get('door_bridges') is not None:
+                    a = self.create_artifact(
+                        db=db,
+                        job_id=job_id,
+                        artifact_type="door_bridges",
+                        artifact_name="door_bridges.json",
+                        content={
+                            'door_bridges': door_bridge_data['door_bridges'],
+                            'algorithm_config': door_bridge_data.get('algorithm_config', {}),
+                            'totals': door_bridge_data.get('totals', {}),
+                        },
+                        metadata={"result_type": "door_bridges", "door_count": len(door_bridge_data['door_bridges'])}
+                    )
+                    if a:
+                        artifacts.append(a)
             if 'LOGIC_C' in final_results:
                 logic_c_data = final_results['LOGIC_C']
                 if isinstance(logic_c_data, dict) and logic_c_data.get('logic_c_pairs') is not None:

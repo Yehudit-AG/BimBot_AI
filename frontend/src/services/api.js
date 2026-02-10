@@ -153,6 +153,11 @@ export const getJobDoorRectangleAssignments = async (jobId) => {
   return response.data;
 };
 
+export const getJobDoorBridges = async (jobId) => {
+  const response = await api.get(`/jobs/${jobId}/door-bridges`);
+  return response.data;
+};
+
 export const healthCheck = async () => {
   const response = await api.get('/health');
   return response.data;

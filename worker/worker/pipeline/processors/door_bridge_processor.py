@@ -124,6 +124,15 @@ def _gap_midpoint_v(a: Tuple[float, float, float, float], b: Tuple[float, float,
     return (gx, gy)
 
 
+def _bridge_area(bridge_rect: Dict[str, Any]) -> float:
+    """Area of a bridge rectangle: (maxX - minX) * (maxY - minY)."""
+    min_x = bridge_rect.get("minX", 0)
+    max_x = bridge_rect.get("maxX", 0)
+    min_y = bridge_rect.get("minY", 0)
+    max_y = bridge_rect.get("maxY", 0)
+    return (max_x - min_x) * (max_y - min_y)
+
+
 def _get_gap_mm(a: Tuple[float, float, float, float], b: Tuple[float, float, float, float], orient: str) -> Optional[float]:
     """Return gap size in mm for the pair, or None if overlap/touch (no positive gap)."""
     cx_a, cy_a = _bounds_center(a)
@@ -257,6 +266,10 @@ def _compute_door_bridges(
                         "bridgeRectangle": bridge,
                         "meta": {"orientation": orient, "alignmentToleranceUsed": alignment_tol},
                     })
+
+        # If door has more than one bridge, keep only the one with maximum area
+        if len(bridge_list) > 1:
+            bridge_list = [max(bridge_list, key=lambda b: _bridge_area(b.get("bridgeRectangle") or {}))]
 
         results.append({
             "doorId": door_id,

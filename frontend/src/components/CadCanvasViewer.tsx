@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { getJobCanvasData, getJobWallCandidatePairs, getJobLogicBPairs, getJobLogicCPairs, getJobLogicDRectangles, getJobLogicERectangles, getJobStatus, getWindowDoorBlocksList } from '../services/api';
+import { getJobCanvasData, getJobWallCandidatePairs, getJobLogicBPairs, getJobLogicCPairs, getJobLogicDRectangles, getJobLogicERectangles, getJobStatus, getWindowDoorBlocksList, getJobDoorBridges } from '../services/api';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -155,6 +155,16 @@ interface WindowDoorBlock {
   entity_type: string;
   window_or_door: 'window' | 'door';
   data: WindowDoorBlockData;
+}
+
+/** One door entry from GET /jobs/{id}/door-bridges (door_bridges array item) */
+interface DoorBridgeEntry {
+  doorId: number;
+  bridges: Array<{
+    bridgeRectangle: { minX: number; minY: number; maxX: number; maxY: number };
+    meta?: Record<string, unknown>;
+  }>;
+  meta?: Record<string, unknown>;
 }
 
 // ============================================================================
@@ -600,6 +610,10 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
   const [windowDoorBlocks, setWindowDoorBlocks] = useState<WindowDoorBlock[] | null>(null);
   const [windowDoorBlocksLoading, setWindowDoorBlocksLoading] = useState(false);
   const [windowDoorBlocksError, setWindowDoorBlocksError] = useState<string | null>(null);
+  const [showBridges, setShowBridges] = useState(false);
+  const [bridgesData, setBridgesData] = useState<DoorBridgeEntry[] | null>(null);
+  const [bridgesLoading, setBridgesLoading] = useState(false);
+  const [bridgesError, setBridgesError] = useState<string | null>(null);
 
   const gridRef = useRef<SpatialGrid | null>(null);
   const animationFrameRef = useRef<number | null>(null);
@@ -698,6 +712,9 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
     setHoveredLogicEPairIdx(null);
     setWindowDoorBlocks(null);
     setWindowDoorBlocksError(null);
+    setBridgesData(null);
+    setBridgesError(null);
+    setShowBridges(false);
   }, [jobId]);
 
   // Fetch window/door blocks for this job's drawing
@@ -888,6 +905,32 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
       });
     return () => { cancelled = true; };
   }, [jobId, showLogicEPairs, logicEPairsData]);
+
+  // Door bridges overlay: lazy load when toggled on
+  useEffect(() => {
+    if (!showBridges || bridgesData !== null || bridgesLoading) return;
+    let cancelled = false;
+    setBridgesLoading(true);
+    setBridgesError(null);
+    getJobDoorBridges(jobId)
+      .then((data) => {
+        if (!cancelled && Array.isArray(data?.door_bridges)) {
+          setBridgesData(data.door_bridges);
+        } else if (!cancelled) {
+          setBridgesData([]);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setBridgesError(err instanceof Error ? err.message : 'Failed to load door bridges');
+          setBridgesData([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setBridgesLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [jobId, showBridges, bridgesData]);
 
   // ============================================================================
   // SPATIAL GRID BUILDING
@@ -1304,7 +1347,46 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
       });
     }
 
-  }, [normalizedData, transform, hoveredLine, selectedLine, layerVisibility, showPairs, pairsData, hoveredPair, showLogicBPairs, logicBPairsData, showLogicCPairs, logicCPairsData, hoveredLogicCPairIdx, showLogicDPairs, logicDPairsData, hoveredLogicDPairIdx, showLogicEPairs, logicEPairsData, hoveredLogicEPairIdx, showWindowDoorBlocks, windowDoorBlocks]);
+    // Door bridges overlay: rectangle with X inside (one per bridge)
+    if (showBridges && bridgesData && bridgesData.length > 0) {
+      const bridgeColor = '#B22222';
+      const bridgeFill = 'rgba(178, 34, 34, 0.25)';
+      bridgesData.forEach((doorEntry) => {
+        const bridges = doorEntry.bridges || [];
+        bridges.forEach((item) => {
+          const r = item.bridgeRectangle;
+          if (!r || typeof r.minX !== 'number' || typeof r.minY !== 'number' || typeof r.maxX !== 'number' || typeof r.maxY !== 'number') return;
+          const box: BBox = { minX: r.minX, minY: r.minY, maxX: r.maxX, maxY: r.maxY };
+          if (!aabbIntersects(box, viewportBBox)) return;
+          const corners = [
+            worldToScreen(r.minX, r.minY, transform),
+            worldToScreen(r.maxX, r.minY, transform),
+            worldToScreen(r.maxX, r.maxY, transform),
+            worldToScreen(r.minX, r.maxY, transform),
+          ];
+          ctx.beginPath();
+          ctx.moveTo(corners[0].x, corners[0].y);
+          for (let i = 1; i < corners.length; i++) ctx.lineTo(corners[i].x, corners[i].y);
+          ctx.closePath();
+          ctx.fillStyle = bridgeFill;
+          ctx.fill();
+          ctx.strokeStyle = bridgeColor;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          // X inside: diagonals
+          ctx.beginPath();
+          ctx.moveTo(corners[0].x, corners[0].y);
+          ctx.lineTo(corners[2].x, corners[2].y);
+          ctx.moveTo(corners[1].x, corners[1].y);
+          ctx.lineTo(corners[3].x, corners[3].y);
+          ctx.strokeStyle = bridgeColor;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        });
+      });
+    }
+
+  }, [normalizedData, transform, hoveredLine, selectedLine, layerVisibility, showPairs, pairsData, hoveredPair, showLogicBPairs, logicBPairsData, showLogicCPairs, logicCPairsData, hoveredLogicCPairIdx, showLogicDPairs, logicDPairsData, hoveredLogicDPairIdx, showLogicEPairs, logicEPairsData, hoveredLogicEPairIdx, showWindowDoorBlocks, windowDoorBlocks, showBridges, bridgesData]);
 
   useEffect(() => {
     if (animationFrameRef.current) {
@@ -1933,6 +2015,25 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
           {logicEPairsLoading ? 'Loading...' : showLogicEPairs ? 'Hide LOGIC E' : 'Show LOGIC E'}
         </button>
 
+        <button
+          onClick={() => setShowBridges(!showBridges)}
+          disabled={bridgesLoading}
+          style={{
+            padding: '8px 16px',
+            backgroundColor: showBridges ? '#B22222' : '#fff',
+            color: showBridges ? '#fff' : '#000',
+            border: '1px solid #ccc',
+            borderRadius: '4px',
+            cursor: bridgesLoading ? 'wait' : 'pointer',
+            fontSize: '14px',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+            opacity: bridgesLoading ? 0.6 : 1,
+          }}
+          title="Show/Hide door bridge overlay (rectangle with X)"
+        >
+          {bridgesLoading ? 'Loading...' : showBridges ? 'Hide Bridges' : 'Show Bridges'}
+        </button>
+
         {pairsError && (
           <div
             style={{
@@ -2005,6 +2106,21 @@ export const CadCanvasViewer: React.FC<CadCanvasViewerProps> = ({
             }}
           >
             {logicEPairsError}
+          </div>
+        )}
+
+        {bridgesError && (
+          <div
+            style={{
+              padding: '4px 8px',
+              fontSize: '11px',
+              color: 'red',
+              backgroundColor: '#fff',
+              border: '1px solid #ccc',
+              borderRadius: '4px',
+            }}
+          >
+            {bridgesError}
           </div>
         )}
 

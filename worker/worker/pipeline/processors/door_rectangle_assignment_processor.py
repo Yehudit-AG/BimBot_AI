@@ -12,6 +12,15 @@ from typing import Dict, Any, List, Tuple, Optional
 from .base_processor import BaseProcessor
 from .logic_e_adjacent_merge_processor import _get_bounds
 
+# Expand door bbox by this margin (mm) on all sides before intersecting with Logic E rectangles
+DOOR_BBOX_EXPAND_MM = 200.0  # 20 cm
+
+
+def _expand_bbox(bbox: Tuple[float, float, float, float], margin_mm: float) -> Tuple[float, float, float, float]:
+    """Expand AABB (xmin, ymin, xmax, ymax) by margin_mm on all sides."""
+    xmin, ymin, xmax, ymax = bbox
+    return (xmin - margin_mm, ymin - margin_mm, xmax + margin_mm, ymax + margin_mm)
+
 
 def _rotation_to_degrees_90(block_data: Dict[str, Any]) -> float:
     """Get rotation from block data and snap to 0, 90, 180, 270 degrees."""
@@ -82,7 +91,8 @@ def _compute_assignments(
     logic_e_rectangles: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
     """
-    For each door, find indices of all Logic E rectangles that intersect its world bbox.
+    For each door, expand its world bbox by DOOR_BBOX_EXPAND_MM on all sides, then find
+    indices of all Logic E rectangles that intersect the expanded bbox.
     Returns list of { doorId, doorType, rectanglesCount, rectangleIndices }.
     """
     assignments: List[Dict[str, Any]] = []
@@ -97,12 +107,13 @@ def _compute_assignments(
                 "rectangleIndices": [],
             })
             continue
+        expanded_bbox = _expand_bbox(door_bbox, DOOR_BBOX_EXPAND_MM)
         indices: List[int] = []
         for rect_idx, rect in enumerate(logic_e_rectangles):
             rect_bounds = _get_bounds(rect)
             if rect_bounds is None:
                 continue
-            if _aabb_intersects(door_bbox, rect_bounds):
+            if _aabb_intersects(expanded_bbox, rect_bounds):
                 indices.append(rect_idx)
         assignments.append({
             "doorId": door_idx,
@@ -149,7 +160,7 @@ class DoorRectangleAssignmentProcessor(BaseProcessor):
                     }
                     for i, b in enumerate(doors)
                 ],
-                "algorithm_config": {},
+                "algorithm_config": {"door_bbox_expand_mm": DOOR_BBOX_EXPAND_MM},
                 "totals": {
                     "doors_processed": len(doors),
                     "total_assignments": 0,
@@ -177,7 +188,7 @@ class DoorRectangleAssignmentProcessor(BaseProcessor):
         )
         return {
             "door_assignments": door_assignments,
-            "algorithm_config": {},
+            "algorithm_config": {"door_bbox_expand_mm": DOOR_BBOX_EXPAND_MM},
             "totals": {
                 "doors_processed": len(doors),
                 "total_assignments": total_assignments,

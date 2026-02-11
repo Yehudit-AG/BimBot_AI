@@ -94,25 +94,12 @@ class PipelineExecutor:
         # Execute each pipeline step
         for step_order, (step_name, _) in enumerate(self.PIPELINE_STEPS, 1):
             try:
-                # #region agent log
-                import json
-                import time
-                with open(r'c:\Users\yehudit\Desktop\BimBot_AI_WALL\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"initial","hypothesisId":"C,E","location":"pipeline_executor.py:76","message":"Executing pipeline step","data":{"step_name":step_name,"step_order":step_order},"timestamp":int(time.time()*1000)}) + '\n')
-                # #endregion
-                
                 step_result = self._execute_step(
                     step_name, 
                     step_order, 
                     pipeline_data
                 )
                 results[step_name] = step_result
-                
-                # #region agent log
-                with open(r'c:\Users\yehudit\Desktop\BimBot_AI_WALL\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                    has_pairs = 'wall_candidate_pairs' in step_result if isinstance(step_result, dict) else False
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"initial","hypothesisId":"C,E","location":"pipeline_executor.py:85","message":"Pipeline step completed","data":{"step_name":step_name,"step_result_type":type(step_result).__name__,"has_wall_candidate_pairs":has_pairs},"timestamp":int(time.time()*1000)}) + '\n')
-                # #endregion
                 
                 # Update pipeline data with step results
                 pipeline_data[f'{step_name.lower()}_results'] = step_result

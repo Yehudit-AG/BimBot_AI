@@ -88,22 +88,9 @@ def process_job(job_id_str: str) -> Dict[str, Any]:
         artifact_service = ArtifactService()
         artifacts = []
         
-        # #region agent log
-        import json
-        import time
-        with open(r'c:\Users\yehudit\Desktop\BimBot_AI_WALL\.cursor\debug.log', 'a', encoding='utf-8') as f:
-            f.write(json.dumps({"sessionId":"debug-session","runId":"initial","hypothesisId":"A,D","location":"job_processor.py:88","message":"Storing artifacts","data":{"results_keys":list(results.keys()),"wall_candidates_in_results":"WALL_CANDIDATES_PLACEHOLDER" in results},"timestamp":int(time.time()*1000)}) + '\n')
-        # #endregion
-        
         # Store each pipeline step result as artifact
         for step_name, step_result in results.items():
             if step_result:
-                # #region agent log
-                with open(r'c:\Users\yehudit\Desktop\BimBot_AI_WALL\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                    has_pairs = 'wall_candidate_pairs' in step_result if isinstance(step_result, dict) else False
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"initial","hypothesisId":"A,D","location":"job_processor.py:95","message":"Processing step result","data":{"step_name":step_name,"has_wall_candidate_pairs":has_pairs,"step_result_type":type(step_result).__name__},"timestamp":int(time.time()*1000)}) + '\n')
-                # #endregion
-                
                 artifact = artifact_service.create_artifact(
                     db=db,
                     job_id=job_id,
@@ -114,11 +101,6 @@ def process_job(job_id_str: str) -> Dict[str, Any]:
                 )
                 if artifact:
                     artifacts.append(artifact)
-                    
-                    # #region agent log
-                    with open(r'c:\Users\yehudit\Desktop\BimBot_AI_WALL\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"initial","hypothesisId":"A,D","location":"job_processor.py:105","message":"Artifact created","data":{"step_name":step_name,"artifact_type":f"{step_name.lower()}_results","artifact_id":str(artifact.id)},"timestamp":int(time.time()*1000)}) + '\n')
-                    # #endregion
 
         # Create dedicated wall_candidate_pairs artifact (single source of truth)
         final_artifacts = artifact_service.store_final_results(db, job_id, results)

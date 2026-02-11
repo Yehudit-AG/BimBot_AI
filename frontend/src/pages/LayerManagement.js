@@ -170,7 +170,10 @@ const LayerManagement = () => {
         <div className="card-body">
           {(updateSelectionMutation.error || createJobMutation.error || collectWindowDoorMutation.error) && (
             <div className="alert alert-danger">
-              Error: {updateSelectionMutation.error?.message || createJobMutation.error?.message || collectWindowDoorMutation.error?.message}
+              <strong>Error:</strong> {updateSelectionMutation.error?.message || createJobMutation.error?.message || collectWindowDoorMutation.error?.message}
+              {createJobMutation.error?.message && createJobMutation.error?.message.includes('queued') && (
+                <div className="mt-2">Make sure Redis and the Worker service are running (e.g. <code>docker-compose up -d</code> or start the worker manually).</div>
+              )}
             </div>
           )}
           {windowDoorMessage && (

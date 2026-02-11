@@ -58,3 +58,15 @@ THICKNESS_MAX_MM = 450.0
 LINE_COORD_TOL_MM = 0.5
 # Adjacency gap along run axis (mm); intervals within this are mergeable.
 GAP_TOL_MM = 1.0
+
+# ---------------------------------------------------------------------------
+# LOGIC F (L-junction extension)
+# ---------------------------------------------------------------------------
+# Angle tolerance (degrees) for "approximately perpendicular" L-junctions.
+LOGIC_F_ANGLE_TOL_DEG = 25.0
+# Dot-product tolerance: |dot(u1,u2)| <= this for perpendicular (0 = exact 90°).
+LOGIC_F_ANGLE_DOT_TOL = 0.3
+# Maximum extension length (mm) per rectangle when closing L-junction gap.
+LOGIC_F_MAX_EXTENSION_MM = 300.0
+# Max distance (mm) from rectangle centerline to junction center to consider extending.
+LOGIC_F_MAX_JUNCTION_DISTANCE_MM = 400.0

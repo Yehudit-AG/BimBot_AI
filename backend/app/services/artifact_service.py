@@ -407,25 +407,11 @@ class ArtifactService:
     def get_wall_candidate_pairs(self, db: Session, job_id: uuid.UUID) -> Optional[Dict[str, Any]]:
         """Get wall candidate pairs artifact for a job; each pair includes overlap_percentage (אחוזי חפיפה)."""
         try:
-            # #region agent log
-            import json
-            import time
-            with open(r'c:\Users\yehudit\Desktop\BimBot_AI_WALL\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"initial","hypothesisId":"B,D","location":"artifact_service.py:394","message":"Looking for wall candidate pairs","data":{"job_id":str(job_id),"looking_for_type":"wall_candidate_pairs"},"timestamp":int(time.time()*1000)}) + '\n')
-            # #endregion
-            
             # Try both the expected type and the actual type created by worker
             artifact = db.query(Artifact).filter(
                 Artifact.job_id == job_id,
                 Artifact.artifact_type.in_(["wall_candidate_pairs", "wall_candidates_placeholder_results"])
             ).first()
-            
-            # #region agent log
-            with open(r'c:\Users\yehudit\Desktop\BimBot_AI_WALL\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                all_artifacts = db.query(Artifact).filter(Artifact.job_id == job_id).all()
-                artifact_types = [a.artifact_type for a in all_artifacts]
-                f.write(json.dumps({"sessionId":"debug-session","runId":"initial","hypothesisId":"B,D","location":"artifact_service.py:405","message":"Artifact search result","data":{"found_artifact":artifact is not None,"all_artifact_types":artifact_types},"timestamp":int(time.time()*1000)}) + '\n')
-            # #endregion
             
             if not artifact:
                 return None

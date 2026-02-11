@@ -34,12 +34,6 @@ class WallCandidatesProcessor(BaseProcessor):
         mode = self.DETECTION_MODE
         self.log_info(f"Starting wall candidate detection ({mode} mode)")
         
-        # #region agent log
-        import json
-        with open(r'c:\Users\yehudit\Desktop\BimBot_AI_WALL\.cursor\debug.log', 'a', encoding='utf-8') as f:
-            f.write(json.dumps({"sessionId":"debug-session","runId":"initial","hypothesisId":"A,C","location":"wall_candidates_processor.py:22","message":"Wall candidates processor started","data":{"mode":mode,"pipeline_data_keys":list(pipeline_data.keys())},"timestamp":int(time.time()*1000)}) + '\n')
-        # #endregion
-        
         start_time = time.time()
         
         # Get parallel processing results from previous step
@@ -217,12 +211,6 @@ class WallCandidatesProcessor(BaseProcessor):
                 'average_overlap': avg_overlap
             }
         }
-        
-        # #region agent log
-        import json
-        with open(r'c:\Users\yehudit\Desktop\BimBot_AI_WALL\.cursor\debug.log', 'a', encoding='utf-8') as f:
-            f.write(json.dumps({"sessionId":"debug-session","runId":"initial","hypothesisId":"A,C","location":"wall_candidates_processor.py:207","message":"Wall candidates processor completed","data":{"pairs_count":len(wall_candidate_pairs),"result_keys":list(result.keys())},"timestamp":int(time.time()*1000)}) + '\n')
-        # #endregion
         
         return result
     

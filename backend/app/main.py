@@ -425,7 +425,6 @@ async def get_window_door_blocks_list(
 async def create_job(
     drawing_id: uuid.UUID,
     job_request: JobCreateRequest,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     """Start processing pipeline for selected layers."""
@@ -464,8 +463,15 @@ async def create_job(
     db.add(job)
     db.commit()
     
-    # Enqueue job for processing
-    background_tasks.add_task(job_service.enqueue_job, job.id)
+    # Enqueue job for processing (synchronously so user gets an error if Redis/worker queue is down)
+    try:
+        job_service.enqueue_job(job.id)
+    except Exception as e:
+        logger.error("Failed to enqueue job", job_id=str(job.id), error=str(e))
+        raise HTTPException(
+            status_code=503,
+            detail="Job was created but could not be queued for processing. Make sure Redis is running and the Worker service is started."
+        ) from e
     
     logger.info(
         "Job created and enqueued",
@@ -636,13 +642,6 @@ async def get_job_wall_candidate_pairs(
     db: Session = Depends(get_db)
 ):
     """Get wall candidate pairs for a job; each pair includes overlap_percentage (אחוזי חפיפה)."""
-    # #region agent log
-    import json
-    import time
-    with open(r'c:\Users\yehudit\Desktop\BimBot_AI_WALL\.cursor\debug.log', 'a', encoding='utf-8') as f:
-        f.write(json.dumps({"sessionId":"debug-session","runId":"post-fix","hypothesisId":"B,D","location":"main.py:494","message":"Wall candidate pairs endpoint called","data":{"job_id":str(job_id)},"timestamp":int(time.time()*1000)}) + '\n')
-    # #endregion
-    
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -650,11 +649,6 @@ async def get_job_wall_candidate_pairs(
     # Get wall candidate pairs using artifact service
     artifact_service = ArtifactService()
     pairs_data = artifact_service.get_wall_candidate_pairs(db, job_id)
-    
-    # #region agent log
-    with open(r'c:\Users\yehudit\Desktop\BimBot_AI_WALL\.cursor\debug.log', 'a', encoding='utf-8') as f:
-        f.write(json.dumps({"sessionId":"debug-session","runId":"post-fix","hypothesisId":"B,D","location":"main.py:507","message":"Artifact service result","data":{"pairs_data_found":pairs_data is not None,"pairs_data_type":type(pairs_data).__name__ if pairs_data else None},"timestamp":int(time.time()*1000)}) + '\n')
-    # #endregion
     
     if not pairs_data:
         raise HTTPException(status_code=404, detail="Wall candidate pairs data not available for this job")
